@@ -71,7 +71,8 @@ input, textarea { font-family: inherit; }
   background: var(--black);
   flex-shrink: 0;
   box-shadow: 0 4px 16px rgba(0,0,0,0.18);
-  z-index: 20;
+  z-index: 1000; /* ← Cambia de 20 a 1000 */
+  position: relative; /* ← Asegura que tenga posición relativa */
 }
 
 .brand {
