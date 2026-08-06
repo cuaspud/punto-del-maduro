@@ -266,9 +266,12 @@
       <div class="col-body" id="colEntregados">
         <div class="col-empty">No hay pedidos entregados hoy</div>
       </div>
-      <div class="col-footer">
+           <div class="col-footer">
         <span>Total vendido hoy</span>
-        <span id="totalVendidoHoy">$0</span>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <span id="totalVendidoHoy">$0</span>
+          <button id="btnLimpiarDia" style="background: #E64A3B; color: white; border: none; padding: 8px 14px; border-radius: 10px; font-weight: 800; font-size: 12px; cursor: pointer;">🗑️ Reiniciar día</button>
+        </div>
       </div>
     </section>
   </main>
@@ -493,6 +496,66 @@
     render(colListos, countListos, lastListos, "listo", "No hay pedidos listos");
     renderEntregadosHoy();
   }, 30000);
+  // ------------------------------------------------
+  // BOTÓN: REINICIAR DÍA (Borrar solo entregados)
+  // ------------------------------------------------
+  const btnLimpiarDia = document.getElementById("btnLimpiarDia");
+
+  btnLimpiarDia.addEventListener("click", async () => {
+    // 1. Preguntar para que no sea un accidente
+    if (!confirm("¿Estás seguro de que quieres borrar TODOS los pedidos entregados de hoy? Esta acción no se puede deshacer.")) {
+      return;
+    }
+
+    // 2. Deshabilitar el botón mientras borra
+    btnLimpiarDia.disabled = true;
+    btnLimpiarDia.textContent = "Borrando...";
+
+    try {
+      // 3. Obtener los IDs de los pedidos que están en la columna de entregados hoy
+      const pedidosHoy = lastEntregadosRaw.filter(esHoy);
+      
+      if (pedidosHoy.length === 0) {
+        alert("No hay pedidos entregados hoy para borrar.");
+        btnLimpiarDia.disabled = false;
+        btnLimpiarDia.textContent = "🗑️ Reiniciar día";
+        return;
+      }
+
+      // 4. Llamar a la función de firebase.js para borrar el lote
+      // NOTA: Como en firebase.js no teníamos una función para borrar en lote,
+      // la importaremos y la crearemos aquí mismo.
+      
+      // Importamos funciones necesarias si no las tienes ya
+      const { getFirestore, writeBatch, doc } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+      
+      // Usamos la instancia global de firebase que ya está iniciada
+      const db = getFirestore(window.firebaseApp); 
+      
+      // Creamos el lote para borrar
+      const batch = writeBatch(db);
+      pedidosHoy.forEach((p) => {
+        const ref = doc(db, "pedidosCocina", p.id);
+        batch.delete(ref);
+      });
+
+      // 5. Ejecutar el borrado
+      await batch.commit();
+
+      // 6. Limpiar la lista local visualmente y actualizar contadores
+      lastEntregadosRaw = lastEntregadosRaw.filter(p => !esHoy(p));
+      renderEntregadosHoy();
+      alert("✅ ¡Pedidos del día borrados exitosamente!");
+
+    } catch (error) {
+      console.error("Error al borrar el día:", error);
+      alert("Hubo un error al borrar los pedidos. Revisa la consola (F12).");
+    } finally {
+      // 7. Reactivar el botón
+      btnLimpiarDia.disabled = false;
+      btnLimpiarDia.textContent = "🗑️ Reiniciar día";
+    }
+  });
 </script>
 </body>
 </html>
