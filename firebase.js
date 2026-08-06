@@ -194,6 +194,25 @@ export async function cobrarPedidos(ids, metodoPago) {
   });
   return batch.commit();
 }
+/* ---------------------------------------------------------
+   NUEVO: EL MESERO ESCUCHA LOS PEDIDOS QUE YA ESTÁN LISTOS
+   (Para que sepa que ya puede cobrar)
+--------------------------------------------------------- */
+export function escucharListosParaMesero(callback, onError) {
+  const q = query(pedidosRef, where("estado", "==", "listo"));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const pedidos = [];
+      snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+      callback(pedidos);
+    },
+    (err) => {
+      console.error("Error escuchando listos para mesero:", err);
+      if (typeof onError === "function") onError(err);
+    }
+  );
+}
 
 /* ---------------------------------------------------------
    PUENTE PARA script.js (que NO es un módulo)
@@ -202,6 +221,7 @@ export async function cobrarPedidos(ids, metodoPago) {
 --------------------------------------------------------- */
 window.PedidosCocina = {
   enviarPedido,
+  escucharListosParaMesero,
   escucharPendientes,
   escucharListos,
   escucharEntregados,
