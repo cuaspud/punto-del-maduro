@@ -875,7 +875,8 @@
   // Botón de ventas: AL ABRIR, CARGA DIRECTA
   el.btnVentas.addEventListener("click", async () => {
     // Limpiar la pantalla antes de abrir
-    ventasSelection = { type: "day", key: dayKeyOf(new Date()) };
+// ✅ Ahora (corregido):
+let ventasSelection = { type: "day", key: dayKeyOf(new Date()) };
     // Cargar datos directamente
     const ventas = await cargarVentasDirectas();
     renderVentasDaysPanel(ventas);
