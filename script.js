@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con mejoras para Ventas del día)
+   script.js (con espera a Firebase para Ventas del día)
    ========================================================= */
 
 (function () {
@@ -1308,7 +1308,7 @@
   });
 
   /* ---------------------------------------------------------
-     INIT
+     INIT — CON ESPERA A QUE FIREBASE ESTÉ LISTO
   --------------------------------------------------------- */
   function init() {
     loadState();
@@ -1317,13 +1317,34 @@
     renderProducts();
     renderOrder();
     renderSelectTableGrid();
-    initVentasListener();
-    initEntregadosListener();
 
-    if (!state.orderMode || (state.orderMode === "domicilio" && !state.domicilioInfo)) {
-      state.orderMode = null;
-      openOrderTypeScreen();
+    // Esperar a que Firebase esté disponible
+    let intentos = 0;
+    const maxIntentos = 30; // 30 * 500ms = 15 segundos
+
+    function iniciarListeners() {
+      if (window.PedidosCocina && typeof window.PedidosCocina.escucharVentasHoy === 'function') {
+        console.log("✅ Firebase listo, iniciando listeners...");
+        initVentasListener();
+        initEntregadosListener();
+
+        if (!state.orderMode || (state.orderMode === "domicilio" && !state.domicilioInfo)) {
+          state.orderMode = null;
+          openOrderTypeScreen();
+        }
+      } else {
+        intentos++;
+        if (intentos < maxIntentos) {
+          console.log(`⏳ Esperando Firebase... (intento ${intentos})`);
+          setTimeout(iniciarListeners, 500);
+        } else {
+          console.error("❌ Firebase no disponible después de varios intentos.");
+          showToast("Error: Firebase no cargó. Recarga la página.");
+        }
+      }
     }
+
+    iniciarListeners();
   }
 
   init();
