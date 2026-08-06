@@ -51,8 +51,8 @@
     { id: "ob12", cat: "Otras Bebidas", name: "Postobón Mini", price: 2000 },
     { id: "ob13", cat: "Otras Bebidas", name: "Postobón 1.5 L", price: 6500 },
     { id: "ob5", cat: "Otras Bebidas", name: "Limonada Natural", price: 6000 },
-    { id: "ob6", cat: "Otras Bebidas", name: "Café Negro", price: 3000 },
-    { id: "ob14", cat: "Otras Bebidas", name: "Café con Leche", price: 4000 },
+    { id: "ob6", cat: "Otras Bebidas", name: "Café Negro", price: 2500 },
+    { id: "ob14", cat: "Otras Bebidas", name: "Café con Leche", price: 3500 },
   ];
 
   const TABLE_COUNT = 5;
@@ -137,6 +137,17 @@
     return "$" + Math.round(n).toLocaleString("es-CO");
   }
 
+  // Categorías donde el nombre del producto trae una descripción entre
+  // paréntesis (ingredientes). En la vitrina de productos solo mostramos
+  // el título, sin esa descripción, para que no se vea tan cargado.
+  const CATEGORIAS_SOLO_TITULO = ["Maduros", "Tostones", "Bowls"];
+
+  function nombreVitrina(p) {
+    if (!CATEGORIAS_SOLO_TITULO.includes(p.cat)) return p.name;
+    const idx = p.name.indexOf("(");
+    return idx > -1 ? p.name.slice(0, idx).trim() : p.name;
+  }
+
   function uid() {
     return "it_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
   }
@@ -165,7 +176,6 @@
     });
 
     return total;
-  }
   }
 
   function orderItemCount(order) {
@@ -397,8 +407,9 @@
 
       const card = document.createElement("button");
       card.className = "product-card" + (totalQtyOfProduct > 0 ? " in-order" : "");
+      card.title = p.name; // el nombre completo queda disponible al pasar el mouse
       card.innerHTML =
-        `<div class="p-name">${escapeHtml(p.name)}</div>` +
+        `<div class="p-name">${escapeHtml(nombreVitrina(p))}</div>` +
         `<div class="p-bottom">` +
         `<span class="p-price">${formatCOP(p.price)}</span>` +
         `<span class="p-qty-badge">${totalQtyOfProduct > 0 ? totalQtyOfProduct : ""}</span>` +
@@ -678,9 +689,6 @@
         // 🚨 LA CLAVE PARA QUE APAREZCA EN VENTAS: 
         // Lo marcamos como pagado aquí mismo antes de que el sistema se olvide
         await window.PedidosCocina.cobrarPedidos([ref.id], metodo);
-   await window.PedidosCocina.cobrarPedidos([ref.id], metodo);
-        state.sentPedidos[key] = state.sentPedidos[key] || [];
-        state.sentPedidos[key].push({ id: ref.id, total: pedidoExtra.total });
       }
 
       // 2) Marcar como pagados todos los pedidos de esta cuenta
