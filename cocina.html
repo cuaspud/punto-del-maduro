@@ -61,8 +61,8 @@
   .kitchen-top h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.4px; }
   .kitchen-top .status { font-size: 13px; font-weight: 700; color: var(--yellow); }
 
-  .kitchen-cols { flex: 1; display: flex; min-height: 0; }
-  .kitchen-col { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .kitchen-cols { flex: 1; display: flex; min-height: 0; height: 100%; overflow: hidden; }
+  .kitchen-col { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; min-width: 0; }
   .kitchen-col + .kitchen-col { border-left: 2px solid var(--gray-line); }
 
   .col-header {
@@ -101,14 +101,12 @@
     overscroll-behavior: contain;
     touch-action: pan-y;
     padding: 18px;
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 16px;
-    align-content: start;
   }
 
   .col-empty {
-    grid-column: 1 / -1;
     text-align: center;
     color: var(--gray-text);
     font-weight: 700;
@@ -138,6 +136,7 @@
     display: flex;
     flex-direction: column;
     animation: pop 0.25s var(--ease);
+    flex-shrink: 0;
   }
 
   @keyframes pop {
@@ -190,6 +189,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
+    flex-shrink: 0;
   }
 
   .card-total { font-weight: 800; font-size: 16px; }
@@ -297,16 +297,10 @@
 
   let lastPendientes = [];
   let lastListos = [];
-  // NUEVO: guarda TODOS los entregados tal como llegan de Firestore
-  // (sin filtrar por día). El filtro de "hoy" se recalcula cada vez
-  // que se renderiza, para que el corte se reinicie solo a medianoche.
   let lastEntregadosRaw = [];
   let knownPendingIds = new Set();
   let firstPendingSnapshot = true;
 
-  /* ---------------------------------------------------------
-     SONIDO — un beep corto por pedido nuevo, sin repetir
-  --------------------------------------------------------- */
   let audioCtx = null;
 
   function unlockAudioContext() {
@@ -336,9 +330,6 @@
     }
   }
 
-  /* ---------------------------------------------------------
-     HELPERS
-  --------------------------------------------------------- */
   function formatCOP(n) {
     return "$" + Math.round(n || 0).toLocaleString("es-CO");
   }
@@ -373,7 +364,6 @@
       d.getDate() === hoy.getDate();
   }
 
-  // estado: "pendiente" | "listo" | "entregado"
   function buildCard(pedido, estado) {
     const esDomicilio = pedido.tipoPedido === "domicilio";
     const wrap = document.createElement("div");
@@ -430,18 +420,12 @@
         marcarEntregado(pedido.id).catch((e) => console.error(e));
       });
     }
-    // Los pedidos "entregado" ya no tienen acción: quedan guardados
-    // como registro de venta hasta que se cierre el día.
 
     return wrap;
   }
 
   function render(container, countEl, pedidos, estado, emptyText) {
-    // Guardamos la posición del scroll antes de redibujar, porque
-    // container.innerHTML = "" la resetea a 0 y eso hacía parecer
-    // que no se podía deslizar hacia abajo.
     const scrollPos = container.scrollTop;
-
     container.innerHTML = "";
     countEl.textContent = pedidos.length;
     if (pedidos.length === 0) {
@@ -452,20 +436,15 @@
       return;
     }
     pedidos.forEach((p) => container.appendChild(buildCard(p, estado)));
-
     container.scrollTop = scrollPos;
   }
 
-  /* ---------------------------------------------------------
-     TIEMPO REAL — onSnapshot, sin recargar la página
-  --------------------------------------------------------- */
   function mostrarError(err) {
     connStatus.textContent = "⚠ Error de conexión";
     connStatus.style.color = "#FF6B1A";
     connStatus.title = err && err.message ? err.message : "";
 
     if (err && err.code === "failed-precondition") {
-      // Firestore exige un índice compuesto para filtrar por "estado" y ordenar por "hora".
       colPendientes.innerHTML =
         '<div class="col-empty">⚠ Falta crear un índice en Firestore.<br>Abre la consola del navegador (F12 → Console),<br>busca el mensaje en rojo y toca el link que trae.</div>';
       console.error(
@@ -497,10 +476,6 @@
     render(colListos, countListos, pedidos, "listo", "No hay pedidos listos");
   }, mostrarError);
 
-  // NUEVO: vuelve a filtrar por "hoy" y a pintar la columna ENTREGADOS.
-  // Se llama tanto al llegar datos nuevos de Firestore como cada 30s,
-  // así el corte del día se reinicia solo al pasar la medianoche,
-  // aunque no haya ningún pedido nuevo en ese momento.
   function renderEntregadosHoy() {
     const deHoy = lastEntregadosRaw.filter(esHoy);
     render(colEntregados, countEntregados, deHoy, "entregado", "No hay pedidos entregados hoy");
@@ -509,14 +484,10 @@
   }
 
   escucharEntregados((pedidos) => {
-    // Quedan guardados en Firestore para siempre; esto es
-    // solo el corte visual del día en curso.
     lastEntregadosRaw = pedidos;
     renderEntregadosHoy();
   }, mostrarError);
 
-  // Refresca el "tiempo transcurrido" cada 30s sin re-suscribirse a Firestore,
-  // y de paso revisa si ya cambió el día para reiniciar el corte solo.
   setInterval(() => {
     render(colPendientes, countPendientes, lastPendientes, "pendiente", "No hay pedidos pendientes");
     render(colListos, countListos, lastListos, "listo", "No hay pedidos listos");
