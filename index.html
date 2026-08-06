@@ -120,15 +120,12 @@
     <button class="modal-close screen-close" data-close="screenVentas" id="btnCloseVentas">✕</button>
 
     <div class="ventas-layout">
-      <!-- NUEVO: panel plegable con los días/meses para ver ventas de otras fechas -->
       <aside class="ventas-days-panel" id="ventasDaysPanel">
         <div class="ventas-days-header">
           <span>📅 Días</span>
           <button class="ventas-days-toggle" id="btnToggleVentasDays" title="Plegar/desplegar">‹</button>
         </div>
-        <div class="ventas-days-list" id="ventasDaysList">
-          <!-- generado por JS -->
-        </div>
+        <div class="ventas-days-list" id="ventasDaysList"></div>
       </aside>
 
       <div class="ventas-main">
@@ -159,17 +156,14 @@
           </div>
         </div>
 
-             <div class="ventas-list" id="ventasList">
-        <div class="ventas-empty" id="ventasEmpty">Aún no hay ventas registradas hoy</div>
-
-        <!-- 👇 BOTÓN DE EMERGENCIA PARA VER EL DINERO 👇 -->
-        <div style="margin-top: 20px; padding: 15px; background: #FFF3DB; border-radius: 14px; text-align: center; border: 2px solid #FFC72C;">
-          <h3 style="margin: 0; font-size: 16px;">💰 DINERO COBRADO EN FIRESTORE</h3>
-          <div id="totalDirectoFirebase" style="font-size: 28px; font-weight: 800; color: #1FAE5C; margin: 10px 0;">Cargando...</div>
-          <button id="btnForzarCarga" style="background: #FF6B1A; color: white; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 700; cursor: pointer;">🔁 Actualizar ahora</button>
+        <div class="ventas-list" id="ventasList">
+          <div class="ventas-empty" id="ventasEmpty">Aún no hay ventas registradas hoy</div>
         </div>
-        <!-- 👆 HASTA AQUÍ 👆 -->
-      </div>
+
+        <!-- Botón de actualización manual -->
+        <button id="btnRecargarVentas" style="background: var(--yellow); border: none; border-radius: 12px; padding: 12px; font-weight: 800; margin-top: 16px; cursor: pointer; width: 100%;">
+          🔄 Actualizar ventas
+        </button>
       </div>
     </div>
   </div>
@@ -180,19 +174,16 @@
   <div class="screen-box screen-box-ventas">
     <h2 class="screen-title">📦 Pedidos entregados</h2>
     <button class="modal-close screen-close" data-close="screenEntregados" id="btnCloseEntregados">✕</button>
-
     <div class="ventas-summary">
       <div class="ventas-count-box" style="flex:1; justify-content:center;">
         <span id="entregadosCount">0 pedidos</span>
       </div>
     </div>
-
     <div class="ventas-list" id="entregadosList">
       <div class="ventas-empty">Aún no hay pedidos entregados</div>
     </div>
   </div>
 </div>
-
 
 <!-- ===================== MODAL: DATOS DE DOMICILIO ===================== -->
 <div class="modal-overlay" id="modalDomicilio">
@@ -201,21 +192,16 @@
       <h3>🛵 Datos del domicilio</h3>
       <button class="modal-close" data-close="modalDomicilio">✕</button>
     </div>
-
     <div class="modal-body">
       <label class="field-label" for="domNombre">Nombre del cliente</label>
       <input class="field-input" type="text" id="domNombre" placeholder="Ej: Juan Pérez">
-
       <label class="field-label" for="domDireccion">Dirección</label>
       <input class="field-input" type="text" id="domDireccion" placeholder="Ej: Calle 5 # 10-20">
-
       <label class="field-label" for="domTelefono">Teléfono</label>
       <input class="field-input" type="tel" id="domTelefono" placeholder="Ej: 3001234567">
-
       <label class="field-label" for="domObservaciones">Observaciones (opcional)</label>
       <textarea class="exc-note" id="domObservaciones" placeholder="Ej: tocar el timbre, sin picante..."></textarea>
     </div>
-
     <div class="modal-footer">
       <button class="btn-secondary" data-close="modalDomicilio">Cancelar</button>
       <button class="btn-primary" id="btnSaveDomicilio">Continuar</button>
@@ -230,31 +216,16 @@
       <h3 id="excModalTitle">Producto</h3>
       <button class="modal-close" data-close="modalExceptions">✕</button>
     </div>
-
     <div class="modal-body">
       <div class="exc-options" id="excOptions">
-        <label class="exc-chip">
-          <input type="checkbox" value="Sin queso">
-          <span>Sin queso</span>
-        </label>
-        <label class="exc-chip">
-          <input type="checkbox" value="Sin maicitos">
-          <span>Sin maicitos</span>
-        </label>
-        <label class="exc-chip">
-          <input type="checkbox" value="Sin bocadillo">
-          <span>Sin bocadillo</span>
-        </label>
-        <label class="exc-chip">
-          <input type="checkbox" value="Empacar">
-          <span>Empacar</span>
-        </label>
+        <label class="exc-chip"><input type="checkbox" value="Sin queso"><span>Sin queso</span></label>
+        <label class="exc-chip"><input type="checkbox" value="Sin maicitos"><span>Sin maicitos</span></label>
+        <label class="exc-chip"><input type="checkbox" value="Sin bocadillo"><span>Sin bocadillo</span></label>
+        <label class="exc-chip"><input type="checkbox" value="Empacar"><span>Empacar</span></label>
       </div>
-
       <label class="exc-note-label" for="excNote">Otra observación</label>
       <textarea id="excNote" class="exc-note" placeholder="Ej: sin picante, salsa aparte..."></textarea>
     </div>
-
     <div class="modal-footer">
       <button class="btn-secondary" data-close="modalExceptions">Cancelar</button>
       <button class="btn-primary" id="btnSaveExceptions">Guardar</button>
@@ -269,30 +240,18 @@
       <h3>Cobrar pedido</h3>
       <button class="modal-close" data-close="modalPayment">✕</button>
     </div>
-
     <div class="modal-body">
       <div class="pay-total">
         <span>Total a pagar</span>
         <strong id="payTotal">$0</strong>
       </div>
-
       <p class="pay-label">Selecciona el método de pago</p>
       <div class="pay-methods" id="payMethods">
-        <button class="pay-method" data-method="Efectivo">
-          <span class="pay-icon">💵</span>
-          <span>Efectivo</span>
-        </button>
-        <button class="pay-method" data-method="Nequi">
-          <span class="pay-icon">📱</span>
-          <span>Nequi</span>
-        </button>
-        <button class="pay-method" data-method="FIOS">
-          <span class="pay-icon">🏦</span>
-          <span>FIOS</span>
-        </button>
+        <button class="pay-method" data-method="Efectivo"><span class="pay-icon">💵</span><span>Efectivo</span></button>
+        <button class="pay-method" data-method="Nequi"><span class="pay-icon">📱</span><span>Nequi</span></button>
+        <button class="pay-method" data-method="FIOS"><span class="pay-icon">🏦</span><span>FIOS</span></button>
       </div>
     </div>
-
     <div class="modal-footer">
       <button class="btn-secondary" data-close="modalPayment">Cancelar</button>
       <button class="btn-confirm-pay" id="btnConfirmPay" disabled>Confirmar pago</button>
@@ -309,96 +268,13 @@
 <script type="module" src="firebase.js"></script>
 <script src="script.js"></script>
 
-<!-- ============================================================
-     PARCHES Y SCRIPTS ADICIONALES (ya no dependen del orden)
-     ============================================================ -->
 <script>
-// ----------------------------------------------------------------
-// ARREGLO ULTRA DEFINITIVO - MUESTRA TODO SIN IMPORTAR LA FECHA
-// ----------------------------------------------------------------
-(function() {
-    // Esperamos a que cargue el script principal
-    const checkReady = setInterval(() => {
-        if (typeof renderVentas !== 'undefined' && typeof ventasSelection !== 'undefined') {
-            clearInterval(checkReady);
-            console.log("✅ Parche de ventas (ultra) cargado correctamente.");
-
-            // Reemplazamos la función original
-            window.renderVentas = function(ventas) {
-                // CORRECCIÓN ULTRA: Mostramos TODOS los pedidos pagados, sin importar fecha
-                // Solo tomamos los últimos 50 para que no se llene la pantalla
-                const filtradas = ventas
-                    .filter(v => v.estado === "entregado" && v.pagado === true)
-                    .slice(-50); 
-                
-                // Cambiamos el título para que sepas que no es solo "Hoy"
-                const tituloTexto = "📊 Últimas ventas registradas";
-                if (document.getElementById("ventasScreenTitle")) document.getElementById("ventasScreenTitle").textContent = tituloTexto;
-                if (document.getElementById("ventasTotalLabel")) document.getElementById("ventasTotalLabel").textContent = "Total general";
-
-                const ventasList = document.getElementById("ventasList");
-                ventasList.innerHTML = "";
-                
-                if (filtradas.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.className = "ventas-empty";
-                    empty.id = "ventasEmpty";
-                    empty.textContent = "Aún no hay ventas registradas.";
-                    ventasList.appendChild(empty);
-                } else {
-                    filtradas.forEach((v) => {
-                        const esDom = v.tipoPedido === "domicilio";
-                        const titulo = esDom ? ("🛵 " + (v.nombreCliente || "Domicilio")) : ("🍽️ Mesa " + v.mesa);
-                        const item = document.createElement("div");
-                        item.className = "venta-item";
-                        
-                        // Intentamos mostrar la fecha real
-                        let fechaTexto = "Fecha desconocida";
-                        if (v.hora && typeof v.hora.toDate === 'function') {
-                            fechaTexto = v.hora.toDate().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-                        } else if (v.horaPago && typeof v.horaPago.toDate === 'function') {
-                            fechaTexto = v.horaPago.toDate().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-                        }
-                        
-                        item.innerHTML =
-                            `<div>
-                                <div class="venta-title">${titulo}</div>
-                                <div class="venta-sub">${fechaTexto} · ${v.metodoPago || ""}</div>
-                            </div>
-                            <div class="venta-total">$${Math.round(v.total || 0).toLocaleString("es-CO")}</div>`;
-                        ventasList.appendChild(item);
-                    });
-                }
-
-                // Calcular totales globales
-                const totalFiltrado = filtradas.reduce((sum, v) => sum + (v.total || 0), 0);
-                document.getElementById("ventasTotalHoy").textContent = "$" + Math.round(totalFiltrado).toLocaleString("es-CO");
-                document.getElementById("ventasCountHoy").textContent = filtradas.length === 1 ? "1 venta" : filtradas.length + " ventas";
-
-                const sumaPorMetodo = (...metodos) =>
-                    filtradas.filter((v) => metodos.includes(v.metodoPago)).reduce((sum, v) => sum + (v.total || 0), 0);
-                if (document.getElementById("ventasEfectivo")) document.getElementById("ventasEfectivo").textContent = "$" + Math.round(sumaPorMetodo("Efectivo")).toLocaleString("es-CO");
-                if (document.getElementById("ventasNequi")) document.getElementById("ventasNequi").textContent = "$" + Math.round(sumaPorMetodo("Nequi")).toLocaleString("es-CO");
-                if (document.getElementById("ventasTransferencia")) document.getElementById("ventasTransferencia").textContent = "$" + Math.round(sumaPorMetodo("FIOS", "Transferencia")).toLocaleString("es-CO");
-                
-                // Actualizar el panel de días
-                if (typeof renderVentasDaysPanel === 'function') {
-                    renderVentasDaysPanel();
-                }
-            };
-        }
-    }, 500);
-})();
-</script>
-
-<script>
-// ----------------------------------------------------------------
-// NUEVO: CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA
-// ----------------------------------------------------------------
-(function() {
+  // ----------------------------------------------------------------
+  // CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA (sin conflictos)
+  // ----------------------------------------------------------------
+  (function() {
     "use strict";
 
-    // 1. Sonido para el mesero cuando un pedido está listo
     let audioCtxMesero = null;
     function playBeepMesero() {
       try {
@@ -415,104 +291,42 @@
       } catch (e) { console.warn("Sonido fallido", e); }
     }
 
-    // 2. La lógica para escuchar los cambios y poner la mesa verde
     function initEscuchaListosMesero() {
       if (!window.PedidosCocina || typeof window.PedidosCocina.escucharListosParaMesero !== "function") return;
-
       let idsListosConocidos = new Set();
-
       window.PedidosCocina.escucharListosParaMesero((pedidosListos) => {
         const nuevosIds = new Set(pedidosListos.map(p => p.id));
-        
         let hayNuevo = false;
-        nuevosIds.forEach(id => {
-          if (!idsListosConocidos.has(id)) hayNuevo = true;
-        });
-
+        nuevosIds.forEach(id => { if (!idsListosConocidos.has(id)) hayNuevo = true; });
         if (hayNuevo) playBeepMesero();
         idsListosConocidos = nuevosIds;
-
-        // Cambiar color de las mesas
+        // Actualizar colores de mesas (lógica simplificada)
         document.querySelectorAll('.table-btn').forEach(btn => {
           const mesaTexto = btn.textContent.trim();
           const numMesa = mesaTexto.replace('Mesa ', '').replace(/[^0-9]/g, '');
           if (!numMesa) return;
-
           const hayListo = pedidosListos.some(p => p.mesa == numMesa && p.tipoPedido === 'mesa');
-
           if (hayListo) {
             btn.style.borderColor = '#1FAE5C';
             btn.style.background = '#1FAE5C';
             btn.style.color = 'white';
             btn.querySelector('.table-sub').textContent = '✅ LISTO';
           } else {
-            // Volver al color normal
-            const owed = window._getSentTotal ? window._getSentTotal(numMesa) + window._getOrderTotal(state.tables[numMesa]) : 0;
-            if (owed > 0) {
-               btn.style.borderColor = 'rgba(255, 199, 44, 0.4)';
-               btn.style.background = 'var(--black-soft)';
-               btn.style.color = '#C9BFAF';
-               btn.querySelector('.table-sub').textContent = '$' + Math.round(owed).toLocaleString("es-CO");
-            } else {
-               btn.style.borderColor = 'transparent';
-               btn.style.background = 'var(--black-soft)';
-               btn.style.color = '#C9BFAF';
-               btn.querySelector('.table-sub').textContent = 'Libre';
-            }
+            btn.style.borderColor = 'transparent';
+            btn.style.background = 'var(--black-soft)';
+            btn.style.color = '#C9BFAF';
+            btn.querySelector('.table-sub').textContent = 'Libre';
           }
         });
-      }, (err) => console.error("Error escuchando listos para mesero:", err));
+      }, (err) => console.error("Error escuchando listos:", err));
     }
 
-    // Esperar a que cargue el script principal
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initEscuchaListosMesero);
     } else {
       initEscuchaListosMesero();
     }
   })();
-    
-  // ----------------------------------------------------------------
-  // LECTURA DIRECTA DE FIRESTORE (Sin errores de filtro)
-  // ----------------------------------------------------------------
-  async function cargarVentasDirectas() {
-    try {
-      const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
-      const db = getFirestore(window.firebaseApp);
-      
-      const querySnapshot = await getDocs(collection(db, "pedidosCocina"));
-      
-      let total = 0;
-      let count = 0;
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        // Solo contamos los que están pagados y entregados
-        if (data.pagado === true && data.estado === "entregado") {
-          total += (data.total || 0);
-          count++;
-        }
-      });
-
-      const elTotal = document.getElementById("totalDirectoFirebase");
-      if (elTotal) {
-        elTotal.textContent = "$" + Math.round(total).toLocaleString("es-CO");
-      }
-      console.log("💰 Lectura directa exitosa. Total: $" + total + " (" + count + " ventas)");
-      
-    } catch (error) {
-      console.error("❌ Error en lectura directa:", error);
-      document.getElementById("totalDirectoFirebase").textContent = "❌ Error al leer";
-    }
-  }
-
-  // Cuando se cargue la página, asignamos el evento al botón
-  document.addEventListener("DOMContentLoaded", () => {
-    const btn = document.getElementById("btnForzarCarga");
-    if (btn) {
-      btn.addEventListener("click", cargarVentasDirectas);
-    }
-  });
 </script>
 
 </body>
