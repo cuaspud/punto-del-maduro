@@ -297,5 +297,86 @@
 
 <script src="script.js"></script>
 <script type="module" src="firebase.js"></script>
+  <script>
+  // ----------------------------------------------------------------
+  // NUEVO: CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA
+  // ----------------------------------------------------------------
+  (function() {
+    "use strict";
+
+    // 1. Sonido para el mesero cuando un pedido está listo
+    let audioCtxMesero = null;
+    function playBeepMesero() {
+      try {
+        if (!audioCtxMesero) audioCtxMesero = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtxMesero.createOscillator();
+        const gain = audioCtxMesero.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, audioCtxMesero.currentTime);
+        gain.gain.setValueAtTime(0.22, audioCtxMesero.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtxMesero.currentTime + 0.6);
+        osc.connect(gain).connect(audioCtxMesero.destination);
+        osc.start();
+        osc.stop(audioCtxMesero.currentTime + 0.6);
+      } catch (e) { console.warn("Sonido fallido", e); }
+    }
+
+    // 2. La lógica para escuchar los cambios y poner la mesa verde
+    function initEscuchaListosMesero() {
+      if (!window.PedidosCocina || typeof window.PedidosCocina.escucharListosParaMesero !== "function") return;
+
+      let idsListosConocidos = new Set();
+
+      window.PedidosCocina.escucharListosParaMesero((pedidosListos) => {
+        const nuevosIds = new Set(pedidosListos.map(p => p.id));
+        
+        let hayNuevo = false;
+        nuevosIds.forEach(id => {
+          if (!idsListosConocidos.has(id)) hayNuevo = true;
+        });
+
+        if (hayNuevo) playBeepMesero();
+        idsListosConocidos = nuevosIds;
+
+        // Cambiar color de las mesas
+        document.querySelectorAll('.table-btn').forEach(btn => {
+          const mesaTexto = btn.textContent.trim();
+          const numMesa = mesaTexto.replace('Mesa ', '').replace(/[^0-9]/g, '');
+          if (!numMesa) return;
+
+          const hayListo = pedidosListos.some(p => p.mesa == numMesa && p.tipoPedido === 'mesa');
+
+          if (hayListo) {
+            btn.style.borderColor = '#1FAE5C';
+            btn.style.background = '#1FAE5C';
+            btn.style.color = 'white';
+            btn.querySelector('.table-sub').textContent = '✅ LISTO';
+          } else {
+            // Volver al color normal
+            const owed = window._getSentTotal ? window._getSentTotal(numMesa) + window._getOrderTotal(state.tables[numMesa]) : 0;
+            if (owed > 0) {
+               btn.style.borderColor = 'rgba(255, 199, 44, 0.4)';
+               btn.style.background = 'var(--black-soft)';
+               btn.style.color = '#C9BFAF';
+               btn.querySelector('.table-sub').textContent = '$' + Math.round(owed).toLocaleString("es-CO");
+            } else {
+               btn.style.borderColor = 'transparent';
+               btn.style.background = 'var(--black-soft)';
+               btn.style.color = '#C9BFAF';
+               btn.querySelector('.table-sub').textContent = 'Libre';
+            }
+          }
+        });
+      }, (err) => console.error("Error escuchando listos para mesero:", err));
+    }
+
+    // Esperar a que cargue el script principal
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initEscuchaListosMesero);
+    } else {
+      initEscuchaListosMesero();
+    }
+  })();
+</script>
 </body>
 </html>
