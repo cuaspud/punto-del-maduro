@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>El Punto del Maduro · POS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-badge">🍌</div>
+      <div class="brand-text">
+        <h1>EL PUNTO DEL MADURO</h1>
+        <span>Sistema de pedidos</span>
+      </div>
+    </div>
+
+    <div class="tables-bar" id="tablesBar">
+      <!-- generado por JS -->
+    </div>
+
+    <button class="btn-order-type" id="btnVentas" title="Ventas del día">
+      <span class="icon">📊</span> Ventas del día
+    </button>
+
+    <button class="btn-order-type" id="btnEntregados" title="Historial de entregados">
+      <span class="icon">📦</span> Entregados
+    </button>
+
+    <button class="btn-order-type" id="btnOrderType" title="Cambiar tipo de pedido">
+      <span class="icon">🔁</span> Tipo de pedido
+    </button>
+
+    <button class="btn-new-order" id="btnNewOrder">
+      <span class="icon">＋</span> Nuevo pedido
+    </button>
+  </header>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+
+    <!-- IZQUIERDA 70% -->
+    <section class="products-panel">
+      <nav class="categories" id="categories">
+        <!-- generado por JS -->
+      </nav>
+
+      <div class="products-grid" id="productsGrid">
+        <!-- generado por JS -->
+      </div>
+    </section>
+
+    <!-- DERECHA 30% -->
+    <aside class="order-panel">
+      <div class="order-header">
+        <h2 id="orderTableTitle">Mesa 1</h2>
+        <span class="order-count" id="orderCount">0 productos</span>
+      </div>
+
+      <div class="order-sent-banner" id="orderSentBanner"></div>
+
+      <div class="order-list" id="orderList">
+        <!-- generado por JS -->
+        <div class="order-empty" id="orderEmpty">
+          <div class="order-empty-icon">🧾</div>
+          <p>Aún no hay productos<br>en este pedido</p>
+        </div>
+      </div>
+
+      <div class="order-footer">
+        <div class="order-total-row">
+          <span>Total</span>
+          <span id="orderTotal">$0</span>
+        </div>
+        <button class="btn-kitchen" id="btnKitchen">🚀 Enviar a cocina</button>
+        <button class="btn-charge" id="btnCharge">Cobrar</button>
+      </div>
+    </aside>
+
+  </main>
+</div>
+
+<!-- ===================== PANTALLA: TIPO DE PEDIDO ===================== -->
+<div class="screen-overlay" id="screenOrderType">
+  <div class="screen-box">
+    <h2 class="screen-title">¿Qué tipo de pedido es?</h2>
+    <button class="modal-close screen-close" id="btnCloseOrderType" data-close="screenOrderType">✕</button>
+    <div class="order-type-options">
+      <button class="order-type-card order-type-mesa" id="btnPickMesa">
+        <span class="ot-icon">🍽️</span>
+        <span class="ot-label">Mesa</span>
+      </button>
+      <button class="order-type-card order-type-domicilio" id="btnPickDomicilio">
+        <span class="ot-icon">🛵</span>
+        <span class="ot-label">Domicilio</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PANTALLA: ELEGIR MESA ===================== -->
+<div class="screen-overlay" id="screenSelectTable">
+  <div class="screen-box">
+    <h2 class="screen-title">Selecciona la mesa</h2>
+    <button class="modal-close screen-close" data-close="screenSelectTable" id="btnCloseSelectTable">✕</button>
+    <div class="select-table-grid" id="selectTableGrid">
+      <!-- generado por JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PANTALLA: VENTAS DEL DÍA ===================== -->
+<div class="screen-overlay" id="screenVentas">
+  <div class="screen-box screen-box-ventas">
+    <button class="modal-close screen-close" data-close="screenVentas" id="btnCloseVentas">✕</button>
+
+    <div class="ventas-layout">
+      <!-- NUEVO: panel plegable con los días/meses para ver ventas de otras fechas -->
+      <aside class="ventas-days-panel" id="ventasDaysPanel">
+        <div class="ventas-days-header">
+          <span>📅 Días</span>
+          <button class="ventas-days-toggle" id="btnToggleVentasDays" title="Plegar/desplegar">‹</button>
+        </div>
+        <div class="ventas-days-list" id="ventasDaysList">
+          <!-- generado por JS -->
+        </div>
+      </aside>
+
+      <div class="ventas-main">
+        <h2 class="screen-title" id="ventasScreenTitle">📊 Ventas de hoy</h2>
+
+        <div class="ventas-summary">
+          <div class="ventas-total-box">
+            <span id="ventasTotalLabel">Total vendido hoy</span>
+            <strong id="ventasTotalHoy">$0</strong>
+          </div>
+          <div class="ventas-count-box">
+            <span id="ventasCountHoy">0 ventas</span>
+          </div>
+        </div>
+
+        <div class="ventas-breakdown">
+          <div class="ventas-method-box">
+            <span>💵 Efectivo</span>
+            <strong id="ventasEfectivo">$0</strong>
+          </div>
+          <div class="ventas-method-box">
+            <span>📱 Nequi</span>
+            <strong id="ventasNequi">$0</strong>
+          </div>
+          <div class="ventas-method-box">
+            <span>🏦 FIOS</span>
+            <strong id="ventasTransferencia">$0</strong>
+          </div>
+        </div>
+
+        <div class="ventas-list" id="ventasList">
+          <div class="ventas-empty" id="ventasEmpty">Aún no hay ventas registradas hoy</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PANTALLA: HISTORIAL DE ENTREGADOS ===================== -->
+<div class="screen-overlay" id="screenEntregados">
+  <div class="screen-box screen-box-ventas">
+    <h2 class="screen-title">📦 Pedidos entregados</h2>
+    <button class="modal-close screen-close" data-close="screenEntregados" id="btnCloseEntregados">✕</button>
+
+    <div class="ventas-summary">
+      <div class="ventas-count-box" style="flex:1; justify-content:center;">
+        <span id="entregadosCount">0 pedidos</span>
+      </div>
+    </div>
+
+    <div class="ventas-list" id="entregadosList">
+      <div class="ventas-empty">Aún no hay pedidos entregados</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================== MODAL: DATOS DE DOMICILIO ===================== -->
+<div class="modal-overlay" id="modalDomicilio">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>🛵 Datos del domicilio</h3>
+      <button class="modal-close" data-close="modalDomicilio">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <label class="field-label" for="domNombre">Nombre del cliente</label>
+      <input class="field-input" type="text" id="domNombre" placeholder="Ej: Juan Pérez">
+
+      <label class="field-label" for="domDireccion">Dirección</label>
+      <input class="field-input" type="text" id="domDireccion" placeholder="Ej: Calle 5 # 10-20">
+
+      <label class="field-label" for="domTelefono">Teléfono</label>
+      <input class="field-input" type="tel" id="domTelefono" placeholder="Ej: 3001234567">
+
+      <label class="field-label" for="domObservaciones">Observaciones (opcional)</label>
+      <textarea class="exc-note" id="domObservaciones" placeholder="Ej: tocar el timbre, sin picante..."></textarea>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close="modalDomicilio">Cancelar</button>
+      <button class="btn-primary" id="btnSaveDomicilio">Continuar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL: EXCEPCIONES ===================== -->
+<div class="modal-overlay" id="modalExceptions">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="excModalTitle">Producto</h3>
+      <button class="modal-close" data-close="modalExceptions">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="exc-options" id="excOptions">
+        <label class="exc-chip">
+          <input type="checkbox" value="Sin queso">
+          <span>Sin queso</span>
+        </label>
+        <label class="exc-chip">
+          <input type="checkbox" value="Sin maicitos">
+          <span>Sin maicitos</span>
+        </label>
+        <label class="exc-chip">
+          <input type="checkbox" value="Sin bocadillo">
+          <span>Sin bocadillo</span>
+        </label>
+        <label class="exc-chip">
+          <input type="checkbox" value="Empacar">
+          <span>Empacar</span>
+        </label>
+      </div>
+
+      <label class="exc-note-label" for="excNote">Otra observación</label>
+      <textarea id="excNote" class="exc-note" placeholder="Ej: sin picante, salsa aparte..."></textarea>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close="modalExceptions">Cancelar</button>
+      <button class="btn-primary" id="btnSaveExceptions">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL: COBRAR ===================== -->
+<div class="modal-overlay" id="modalPayment">
+  <div class="modal modal-payment">
+    <div class="modal-header">
+      <h3>Cobrar pedido</h3>
+      <button class="modal-close" data-close="modalPayment">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="pay-total">
+        <span>Total a pagar</span>
+        <strong id="payTotal">$0</strong>
+      </div>
+
+      <p class="pay-label">Selecciona el método de pago</p>
+      <div class="pay-methods" id="payMethods">
+        <button class="pay-method" data-method="Efectivo">
+          <span class="pay-icon">💵</span>
+          <span>Efectivo</span>
+        </button>
+        <button class="pay-method" data-method="Nequi">
+          <span class="pay-icon">📱</span>
+          <span>Nequi</span>
+        </button>
+        <button class="pay-method" data-method="FIOS">
+          <span class="pay-icon">🏦</span>
+          <span>FIOS</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close="modalPayment">Cancelar</button>
+      <button class="btn-confirm-pay" id="btnConfirmPay" disabled>Confirmar pago</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TOAST ===================== -->
+<div class="toast" id="toast"></div>
+
+<script src="script.js"></script>
+<script type="module" src="firebase.js"></script>
+</body>
+</html>

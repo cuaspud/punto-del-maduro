@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cocina · El Punto del Maduro</title>
+<style>
+  :root {
+    --yellow: #FFC72C;
+    --yellow-deep: #F2A900;
+    --orange: #FF6B1A;
+    --orange-deep: #E85A0C;
+    --black: #1A1512;
+    --black-soft: #262019;
+    --charcoal: #362E26;
+    --white: #FFFFFF;
+    --cream: #FFF8ED;
+    --gray-line: #ECE4D6;
+    --gray-text: #8A8071;
+    --green: #1FAE5C;
+    --green-deep: #17924C;
+    --blue: #2D6CDF;
+    --blue-deep: #1E52B8;
+    --radius-lg: 26px;
+    --radius-md: 18px;
+    --shadow-card: 0 6px 18px rgba(26, 21, 18, 0.08);
+    --shadow-lift: 0 14px 30px rgba(26, 21, 18, 0.16);
+    --ease: cubic-bezier(.22, 1, .36, 1);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--cream);
+    font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: var(--black);
+    user-select: none;
+  }
+
+  button { font-family: inherit; cursor: pointer; border: none; outline: none; }
+
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #E4D8C0; border-radius: 10px; }
+
+  .kitchen { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+
+  .kitchen-top {
+    background: var(--black);
+    color: var(--white);
+    padding: 16px 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    z-index: 5;
+  }
+
+  .kitchen-top h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.4px; }
+  .kitchen-top .status { font-size: 13px; font-weight: 700; color: var(--yellow); }
+
+  .kitchen-cols { flex: 1; display: flex; min-height: 0; }
+  .kitchen-col { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .kitchen-col + .kitchen-col { border-left: 2px solid var(--gray-line); }
+
+  .col-header {
+    padding: 16px 22px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .col-header.pendientes { background: rgba(255, 107, 26, 0.12); color: var(--orange-deep); }
+  .col-header.listos { background: rgba(45, 108, 223, 0.12); color: var(--blue-deep); }
+  .col-header.entregados { background: rgba(31, 174, 92, 0.14); color: var(--green-deep); }
+
+  .col-count {
+    background: currentColor;
+    border-radius: 999px;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+  }
+  .col-count span { color: var(--white); }
+
+  .col-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    padding: 18px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    align-content: start;
+  }
+
+  .col-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--gray-text);
+    font-weight: 700;
+    padding: 60px 0;
+    font-size: 15px;
+  }
+
+  .col-footer {
+    flex-shrink: 0;
+    padding: 14px 22px;
+    border-top: 2px solid var(--gray-line);
+    background: rgba(31, 174, 92, 0.08);
+    color: var(--green-deep);
+    font-weight: 800;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .order-card {
+    background: var(--white);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+    border: 3px solid var(--gray-line);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: pop 0.25s var(--ease);
+  }
+
+  @keyframes pop {
+    from { transform: scale(0.94); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  .order-card.tipo-mesa { border-color: var(--yellow); }
+  .order-card.tipo-domicilio { border-color: var(--green); }
+
+  .card-head {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 800;
+    font-size: 15px;
+  }
+  .tipo-mesa .card-head { background: rgba(255, 199, 44, 0.2); color: #8A6400; }
+  .tipo-domicilio .card-head { background: rgba(31, 174, 92, 0.16); color: var(--green-deep); }
+
+  .card-time { font-size: 11px; font-weight: 700; opacity: 0.75; white-space: nowrap; text-align: right; }
+
+  .card-body { padding: 14px 16px; flex: 1; }
+
+  .card-client { font-size: 13px; color: var(--charcoal); margin-bottom: 10px; line-height: 1.45; }
+  .card-client strong { color: var(--black); }
+
+  .card-products { list-style: none; margin: 0 0 10px; padding: 0; }
+  .card-products li { padding: 7px 0; border-bottom: 1px dashed var(--gray-line); font-size: 14px; }
+  .card-products li:last-child { border-bottom: none; }
+  .card-products .qty { font-weight: 800; color: var(--orange-deep); margin-right: 6px; }
+  .card-products .exc { display: block; font-size: 12px; color: var(--gray-text); margin-top: 2px; }
+
+  .card-obs {
+    background: var(--cream);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--charcoal);
+    margin-top: 6px;
+  }
+
+  .card-foot {
+    padding: 12px 16px;
+    border-top: 1px solid var(--gray-line);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .card-total { font-weight: 800; font-size: 16px; }
+
+  .btn-ready, .btn-delivered {
+    border-radius: 12px;
+    padding: 11px 16px;
+    font-weight: 800;
+    font-size: 13px;
+    color: var(--white);
+    transition: transform 0.15s var(--ease);
+  }
+  .btn-ready { background: linear-gradient(145deg, var(--orange), var(--orange-deep)); }
+  .btn-delivered { background: linear-gradient(145deg, var(--blue), var(--blue-deep)); }
+  .btn-ready:active, .btn-delivered:active { transform: scale(0.93); }
+
+  .sold-label {
+    border-radius: 12px;
+    padding: 11px 16px;
+    font-weight: 800;
+    font-size: 12px;
+    color: var(--green-deep);
+    background: rgba(31, 174, 92, 0.14);
+    white-space: nowrap;
+  }
+
+  .unlock-audio {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: var(--black-soft);
+    color: var(--white);
+    border-radius: 14px;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow: var(--shadow-lift);
+    z-index: 10;
+    opacity: 0.92;
+  }
+</style>
+</head>
+<body>
+
+<div class="kitchen">
+  <header class="kitchen-top">
+    <h1>🔥 Cocina · El Punto del Maduro</h1>
+    <span class="status" id="connStatus">Conectando…</span>
+  </header>
+
+  <main class="kitchen-cols">
+    <section class="kitchen-col">
+      <div class="col-header pendientes">
+        🔥 PENDIENTES <span class="col-count"><span id="countPendientes">0</span></span>
+      </div>
+      <div class="col-body" id="colPendientes">
+        <div class="col-empty">No hay pedidos pendientes</div>
+      </div>
+    </section>
+
+    <section class="kitchen-col">
+      <div class="col-header listos">
+        ✅ LISTOS <span class="col-count"><span id="countListos">0</span></span>
+      </div>
+      <div class="col-body" id="colListos">
+        <div class="col-empty">No hay pedidos listos</div>
+      </div>
+    </section>
+
+    <section class="kitchen-col">
+      <div class="col-header entregados">
+        📦 ENTREGADOS <span class="col-count"><span id="countEntregados">0</span></span>
+      </div>
+      <div class="col-body" id="colEntregados">
+        <div class="col-empty">No hay pedidos entregados hoy</div>
+      </div>
+      <div class="col-footer">
+        <span>Total vendido hoy</span>
+        <span id="totalVendidoHoy">$0</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="unlock-audio" id="unlockAudio">🔊 Toca la pantalla para activar el sonido</div>
+
+<script type="module">
+  import {
+    escucharPendientes,
+    escucharListos,
+    escucharEntregados,
+    marcarPreparado,
+    marcarEntregado,
+  } from "./firebase.js";
+
+  const colPendientes = document.getElementById("colPendientes");
+  const colListos = document.getElementById("colListos");
+  const colEntregados = document.getElementById("colEntregados");
+  const countPendientes = document.getElementById("countPendientes");
+  const countListos = document.getElementById("countListos");
+  const countEntregados = document.getElementById("countEntregados");
+  const totalVendidoHoy = document.getElementById("totalVendidoHoy");
+  const connStatus = document.getElementById("connStatus");
+  const unlockAudio = document.getElementById("unlockAudio");
+
+  let lastPendientes = [];
+  let lastListos = [];
+  // NUEVO: guarda TODOS los entregados tal como llegan de Firestore
+  // (sin filtrar por día). El filtro de "hoy" se recalcula cada vez
+  // que se renderiza, para que el corte se reinicie solo a medianoche.
+  let lastEntregadosRaw = [];
+  let knownPendingIds = new Set();
+  let firstPendingSnapshot = true;
+
+  /* ---------------------------------------------------------
+     SONIDO — un beep corto por pedido nuevo, sin repetir
+  --------------------------------------------------------- */
+  let audioCtx = null;
+
+  function unlockAudioContext() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } else if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+    unlockAudio.style.display = "none";
+  }
+  document.addEventListener("click", unlockAudioContext, { once: true });
+
+  function playBeep() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.22, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.6);
+    } catch (e) {
+      console.warn("No se pudo reproducir el sonido", e);
+    }
+  }
+
+  /* ---------------------------------------------------------
+     HELPERS
+  --------------------------------------------------------- */
+  function formatCOP(n) {
+    return "$" + Math.round(n || 0).toLocaleString("es-CO");
+  }
+
+  function horaTexto(hora) {
+    if (!hora || typeof hora.toDate !== "function") return "--:--";
+    return hora.toDate().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function tiempoTranscurrido(hora) {
+    if (!hora || typeof hora.toDate !== "function") return "justo ahora";
+    const mins = Math.floor((Date.now() - hora.toDate().getTime()) / 60000);
+    if (mins <= 0) return "justo ahora";
+    if (mins === 1) return "hace 1 min";
+    if (mins < 60) return `hace ${mins} min`;
+    const horas = Math.floor(mins / 60);
+    return `hace ${horas}h ${mins % 60}min`;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str == null ? "" : String(str);
+    return div.innerHTML;
+  }
+
+  function esHoy(hora) {
+    if (!hora || typeof hora.toDate !== "function") return true;
+    const d = hora.toDate();
+    const hoy = new Date();
+    return d.getFullYear() === hoy.getFullYear() &&
+      d.getMonth() === hoy.getMonth() &&
+      d.getDate() === hoy.getDate();
+  }
+
+  // estado: "pendiente" | "listo" | "entregado"
+  function buildCard(pedido, estado) {
+    const esDomicilio = pedido.tipoPedido === "domicilio";
+    const wrap = document.createElement("div");
+    wrap.className = "order-card " + (esDomicilio ? "tipo-domicilio" : "tipo-mesa");
+
+    const titulo = esDomicilio
+      ? `🛵 ${escapeHtml(pedido.nombreCliente || "Domicilio")}`
+      : `🍽️ Mesa ${escapeHtml(pedido.mesa)}`;
+
+    const clienteHtml = esDomicilio
+      ? `<div class="card-client">
+           <strong>📍 ${escapeHtml(pedido.direccion || "")}</strong><br>
+           ☎ ${escapeHtml(pedido.telefono || "")}
+         </div>`
+      : "";
+
+    const productosHtml = (pedido.productos || []).map((p) => {
+      const exc = (p.excepciones && p.excepciones.length)
+        ? `<span class="exc">${escapeHtml(p.excepciones.join(", "))}</span>`
+        : "";
+      return `<li><span class="qty">x${p.cantidad}</span>${escapeHtml(p.nombre)}${exc}</li>`;
+    }).join("");
+
+    const obsHtml = pedido.observaciones
+      ? `<div class="card-obs">📝 ${escapeHtml(pedido.observaciones)}</div>`
+      : "";
+
+    wrap.innerHTML = `
+      <div class="card-head">
+        <span>${titulo}</span>
+        <span class="card-time">${horaTexto(pedido.hora)}<br>${tiempoTranscurrido(pedido.hora)}</span>
+      </div>
+      <div class="card-body">
+        ${clienteHtml}
+        <ul class="card-products">${productosHtml}</ul>
+        ${obsHtml}
+      </div>
+      <div class="card-foot">
+        <span class="card-total">${formatCOP(pedido.total)}</span>
+        ${estado === "pendiente"
+          ? `<button class="btn-ready">✅ Preparado</button>`
+          : estado === "listo"
+          ? `<button class="btn-delivered">✔ Entregado</button>`
+          : `<span class="sold-label">✔ Entregado${pedido.pagado ? " · Pagado" : ""}</span>`}
+      </div>
+    `;
+
+    if (estado === "pendiente") {
+      wrap.querySelector(".btn-ready").addEventListener("click", () => {
+        marcarPreparado(pedido.id).catch((e) => console.error(e));
+      });
+    } else if (estado === "listo") {
+      wrap.querySelector(".btn-delivered").addEventListener("click", () => {
+        marcarEntregado(pedido.id).catch((e) => console.error(e));
+      });
+    }
+    // Los pedidos "entregado" ya no tienen acción: quedan guardados
+    // como registro de venta hasta que se cierre el día.
+
+    return wrap;
+  }
+
+  function render(container, countEl, pedidos, estado, emptyText) {
+    // Guardamos la posición del scroll antes de redibujar, porque
+    // container.innerHTML = "" la resetea a 0 y eso hacía parecer
+    // que no se podía deslizar hacia abajo.
+    const scrollPos = container.scrollTop;
+
+    container.innerHTML = "";
+    countEl.textContent = pedidos.length;
+    if (pedidos.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "col-empty";
+      empty.textContent = emptyText;
+      container.appendChild(empty);
+      return;
+    }
+    pedidos.forEach((p) => container.appendChild(buildCard(p, estado)));
+
+    container.scrollTop = scrollPos;
+  }
+
+  /* ---------------------------------------------------------
+     TIEMPO REAL — onSnapshot, sin recargar la página
+  --------------------------------------------------------- */
+  function mostrarError(err) {
+    connStatus.textContent = "⚠ Error de conexión";
+    connStatus.style.color = "#FF6B1A";
+    connStatus.title = err && err.message ? err.message : "";
+
+    if (err && err.code === "failed-precondition") {
+      // Firestore exige un índice compuesto para filtrar por "estado" y ordenar por "hora".
+      colPendientes.innerHTML =
+        '<div class="col-empty">⚠ Falta crear un índice en Firestore.<br>Abre la consola del navegador (F12 → Console),<br>busca el mensaje en rojo y toca el link que trae.</div>';
+      console.error(
+        "%cFALTA UN ÍNDICE EN FIRESTORE — el mensaje de error de arriba trae un link azul, tócalo para crearlo automáticamente.",
+        "font-weight:bold; font-size:13px;"
+      );
+    }
+  }
+
+  escucharPendientes((pedidos) => {
+    connStatus.textContent = "En línea";
+    connStatus.style.color = "";
+
+    if (firstPendingSnapshot) {
+      knownPendingIds = new Set(pedidos.map((p) => p.id));
+      firstPendingSnapshot = false;
+    } else {
+      const nuevos = pedidos.filter((p) => !knownPendingIds.has(p.id));
+      if (nuevos.length > 0) playBeep();
+      knownPendingIds = new Set(pedidos.map((p) => p.id));
+    }
+
+    lastPendientes = pedidos;
+    render(colPendientes, countPendientes, pedidos, "pendiente", "No hay pedidos pendientes");
+  }, mostrarError);
+
+  escucharListos((pedidos) => {
+    lastListos = pedidos;
+    render(colListos, countListos, pedidos, "listo", "No hay pedidos listos");
+  }, mostrarError);
+
+  // NUEVO: vuelve a filtrar por "hoy" y a pintar la columna ENTREGADOS.
+  // Se llama tanto al llegar datos nuevos de Firestore como cada 30s,
+  // así el corte del día se reinicia solo al pasar la medianoche,
+  // aunque no haya ningún pedido nuevo en ese momento.
+  function renderEntregadosHoy() {
+    const deHoy = lastEntregadosRaw.filter(esHoy);
+    render(colEntregados, countEntregados, deHoy, "entregado", "No hay pedidos entregados hoy");
+    const total = deHoy.reduce((s, p) => s + (p.total || 0), 0);
+    totalVendidoHoy.textContent = formatCOP(total);
+  }
+
+  escucharEntregados((pedidos) => {
+    // Quedan guardados en Firestore para siempre; esto es
+    // solo el corte visual del día en curso.
+    lastEntregadosRaw = pedidos;
+    renderEntregadosHoy();
+  }, mostrarError);
+
+  // Refresca el "tiempo transcurrido" cada 30s sin re-suscribirse a Firestore,
+  // y de paso revisa si ya cambió el día para reiniciar el corte solo.
+  setInterval(() => {
+    render(colPendientes, countPendientes, lastPendientes, "pendiente", "No hay pedidos pendientes");
+    render(colListos, countListos, lastListos, "listo", "No hay pedidos listos");
+    renderEntregadosHoy();
+  }, 30000);
+</script>
+</body>
+</html>
