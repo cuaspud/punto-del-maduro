@@ -68,9 +68,9 @@
     currentCategory: "Maduros",
     tables: {},
     sentPedidos: {},
-    orderMode: null,
+    orderMode: null,       // "mesa" | "domicilio" | "paraLlevar"
     domicilioOrder: [],
-    domicilioInfo: null,
+    domicilioInfo: null,   // { nombre, direccion, telefono, observaciones, esParaLlevar? }
   };
 
   for (let i = 1; i <= TABLE_COUNT; i++) {
@@ -116,7 +116,7 @@
         ? parsed.currentCategory
         : "Maduros";
 
-      state.orderMode = parsed.orderMode === "mesa" || parsed.orderMode === "domicilio"
+      state.orderMode = parsed.orderMode === "mesa" || parsed.orderMode === "domicilio" || parsed.orderMode === "paraLlevar"
         ? parsed.orderMode
         : null;
       state.domicilioOrder = Array.isArray(parsed.domicilioOrder) ? parsed.domicilioOrder : [];
@@ -146,14 +146,22 @@
   }
 
   function currentOrder() {
-    return state.orderMode === "domicilio" ? state.domicilioOrder : state.tables[state.currentTable];
+    if (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") {
+      return state.domicilioOrder;
+    } else {
+      return state.tables[state.currentTable];
+    }
   }
 
   function orderTotal(order) {
     let total = order.reduce((sum, it) => sum + it.price * it.qty, 0);
-    if (state.orderMode === "domicilio") {
+    
+    // Solo sumar recargo de domicilio si NO es "Para llevar"
+    if (state.orderMode === "domicilio" && state.domicilioInfo && state.domicilioInfo.direccion !== "Para llevar") {
       total += PRECIO_DOMICILIO;
     }
+    
+    // Recargo por empaque en Maduros, Tostones, Bowls
     const categoriasConRecargo = ["Maduros", "Tostones", "Bowls"];
     order.forEach((it) => {
       const productoOriginal = PRODUCTS.find(p => p.id === it.productId);
@@ -169,7 +177,11 @@
   }
 
   function mesaKeyCurrent() {
-    return state.orderMode === "domicilio" ? "domicilio" : state.currentTable;
+    if (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") {
+      return "domicilio";
+    } else {
+      return state.currentTable;
+    }
   }
 
   function sentTotal(key) {
@@ -253,7 +265,7 @@
   };
 
   /* ---------------------------------------------------------
-     RENDER: MESAS + DOMICILIOS + ESTADO DE OCUPACIÓN
+     RENDER: MESAS + DOMICILIOS + PARA LLEVAR
   --------------------------------------------------------- */
   function renderTables() {
     el.tablesBar.innerHTML = "";
@@ -267,12 +279,13 @@
       }
     }
     
-    // 1. Mostrar mesas
+    // 1. Mostrar mesas (SIEMPRE)
     for (let i = 1; i <= TABLE_COUNT; i++) {
       const owed = sentTotal(i) + orderTotal(state.tables[i]);
       const estaOcupada = owed > 0 || state.tables[i].length > 0;
       const btn = document.createElement("button");
-      btn.className = "table-btn" + (i === state.currentTable && state.orderMode !== "domicilio" ? " active" : "") +
+      const isActive = (state.orderMode === "mesa" && state.currentTable === i);
+      btn.className = "table-btn" + (isActive ? " active" : "") +
         (estaOcupada ? " has-order" : "");
       btn.innerHTML =
         `<span>Mesa ${i}</span>` +
@@ -281,61 +294,75 @@
       el.tablesBar.appendChild(btn);
     }
     
-    // 2. Mostrar domicilios activos
+    // 2. Mostrar domicilios activos (incluyendo "Para llevar")
     const domiciliosActivos = getDomiciliosActivos();
-    if (domiciliosActivos.length > 0 || state.orderMode === "domicilio") {
+    if (domiciliosActivos.length > 0 || state.orderMode === "domicilio" || state.orderMode === "paraLlevar") {
       domiciliosActivos.forEach((dom) => {
         const totalDomicilio = state.sentPedidos.domicilio 
           ? state.sentPedidos.domicilio.reduce((s, item) => s + (item.total || 0), 0) 
           : 0;
         const btn = document.createElement("button");
-        const isActive = state.orderMode === "domicilio" && state.domicilioInfo && 
-          state.domicilioInfo.nombre === dom.nombre;
+        const isActive = (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") &&
+          state.domicilioInfo && state.domicilioInfo.nombre === dom.nombre;
         btn.className = "table-btn" + (isActive ? " active" : "") + 
           (totalDomicilio > 0 ? " has-order" : "");
+        const icono = dom.esParaLlevar ? "📦" : "🛵";
         btn.innerHTML =
-          `<span>🛵 ${escapeHtml(dom.nombre || "Domicilio")}</span>` +
+          `<span>${icono} ${escapeHtml(dom.nombre || "Domicilio")}</span>` +
           `<span class="table-sub">${totalDomicilio > 0 ? formatCOP(totalDomicilio) : "Activo"}</span>`;
-        btn.addEventListener("click", () => selectDomicilio(dom.nombre, dom.direccion || ""));
+        btn.addEventListener("click", () => selectDomicilio(dom.nombre, dom.direccion || "", dom.esParaLlevar || false));
         el.tablesBar.appendChild(btn);
       });
     }
     
-    // 3. Botón para nuevo domicilio o para llevar
-    if (state.orderMode !== "domicilio" || !state.domicilioInfo) {
-      const btn = document.createElement("button");
-      btn.className = "table-btn";
-      btn.style.border = "2px dashed var(--green)";
-      btn.innerHTML = `<span>📦 Para llevar</span><span class="table-sub">${mesasOcupadas >= TABLE_COUNT ? "🚫 Sin mesas" : "Nuevo"}</span>`;
-      btn.addEventListener("click", () => {
-        if (mesasOcupadas >= TABLE_COUNT) {
-          iniciarPedidoParaLlevar();
-        } else {
-          state.orderMode = "domicilio";
-          state.domicilioInfo = null;
-          state.domicilioOrder = [];
-          openModal(el.modalDomicilio);
-        }
-      });
-      el.tablesBar.appendChild(btn);
-    }
+    // 3. Botón "Para llevar" SIEMPRE visible
+    const btnParaLlevar = document.createElement("button");
+    btnParaLlevar.className = "table-btn";
+    btnParaLlevar.style.border = "2px dashed var(--green)";
+    const textoSub = mesasOcupadas >= TABLE_COUNT ? "🚫 Sin mesas" : "Nuevo";
+    btnParaLlevar.innerHTML = `<span>📦 Para llevar</span><span class="table-sub">${textoSub}</span>`;
+    btnParaLlevar.addEventListener("click", () => {
+      iniciarPedidoParaLlevar();
+    });
+    el.tablesBar.appendChild(btnParaLlevar);
   }
 
-  // Función auxiliar para obtener domicilios activos
+  // Función auxiliar para obtener domicilios activos (incluye "Para llevar")
   function getDomiciliosActivos() {
     const domicilios = [];
     if (state.domicilioInfo && state.sentPedidos.domicilio && state.sentPedidos.domicilio.length > 0) {
       domicilios.push({
         nombre: state.domicilioInfo.nombre,
         direccion: state.domicilioInfo.direccion,
-        total: state.sentPedidos.domicilio.reduce((s, p) => s + p.total, 0)
+        total: state.sentPedidos.domicilio.reduce((s, p) => s + p.total, 0),
+        esParaLlevar: state.domicilioInfo.direccion === "Para llevar" || false,
       });
     }
     return domicilios;
   }
 
-  function selectDomicilio(nombre, direccion) {
-    state.orderMode = "domicilio";
+  function selectTable(tableNum) {
+    if (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") {
+      // Si estamos en un domicilio/para llevar, preguntar si cambiar
+      if (state.domicilioOrder.length > 0 || sentTotal("domicilio") > 0) {
+        if (!confirm("¿Cambiar a mesa y perder el pedido actual?")) return;
+      }
+      state.domicilioOrder = [];
+      state.sentPedidos.domicilio = [];
+      state.domicilioInfo = null;
+    }
+    state.orderMode = "mesa";
+    state.currentTable = tableNum;
+    saveState();
+    renderTables();
+    renderCategories();
+    renderProducts();
+    renderOrder();
+    showToast("Mesa " + tableNum + " seleccionada");
+  }
+
+  function selectDomicilio(nombre, direccion, esParaLlevar) {
+    state.orderMode = esParaLlevar ? "paraLlevar" : "domicilio";
     state.domicilioInfo = {
       nombre: nombre,
       direccion: direccion,
@@ -348,42 +375,32 @@
     renderCategories();
     renderProducts();
     renderOrder();
-    showToast("Domicilio seleccionado: " + nombre);
+    showToast((esParaLlevar ? "📦 " : "🛵 ") + nombre + " seleccionado");
   }
 
   /* ---------------------------------------------------------
-     NUEVO: PEDIDO PARA LLEVAR (cuando no hay mesas)
+     NUEVO: PEDIDO PARA LLEVAR (siempre accesible)
   --------------------------------------------------------- */
   function iniciarPedidoParaLlevar() {
-    const mesasOcupadas = [];
-    for (let i = 1; i <= TABLE_COUNT; i++) {
-      const owed = sentTotal(i) + orderTotal(state.tables[i]);
-      if (owed > 0 || state.tables[i].length > 0) {
-        mesasOcupadas.push(i);
-      }
+    // Si ya hay un pedido activo, preguntar
+    if (state.domicilioOrder.length > 0 || sentTotal("domicilio") > 0) {
+      if (!confirm("¿Cerrar el pedido actual y empezar uno nuevo para llevar?")) return;
     }
-    
-    if (mesasOcupadas.length >= TABLE_COUNT) {
-      if (confirm("⚠️ Todas las mesas están ocupadas. ¿Quieres crear un pedido para llevar (espera)?")) {
-        state.orderMode = "domicilio";
-        state.domicilioInfo = {
-          nombre: "Cliente en espera",
-          direccion: "Para llevar",
-          telefono: "",
-          observaciones: "Cliente esperando mesa"
-        };
-        state.domicilioOrder = [];
-        saveState();
-        renderTables();
-        renderCategories();
-        renderProducts();
-        renderOrder();
-        showToast("📦 Pedido para llevar creado");
-        closeModal(el.screenSelectTable);
-      }
-    } else {
-      openModal(el.screenSelectTable);
-    }
+    state.orderMode = "paraLlevar";
+    state.domicilioInfo = {
+      nombre: "Cliente",
+      direccion: "Para llevar",
+      telefono: "",
+      observaciones: ""
+    };
+    state.domicilioOrder = [];
+    saveState();
+    renderTables();
+    renderCategories();
+    renderProducts();
+    renderOrder();
+    showToast("📦 Pedido para llevar creado");
+    closeModal(el.screenSelectTable);
   }
 
   /* ---------------------------------------------------------
@@ -528,10 +545,14 @@
   function renderOrder() {
     const order = currentOrder();
 
-    if (state.orderMode === "domicilio" && state.domicilioInfo) {
+    if (state.orderMode === "domicilio" && state.domicilioInfo && state.domicilioInfo.direccion !== "Para llevar") {
       el.orderTableTitle.innerHTML =
         "🛵 " + escapeHtml(state.domicilioInfo.nombre) +
         '<span class="order-client-sub">' + escapeHtml(state.domicilioInfo.direccion) + "</span>";
+    } else if (state.orderMode === "paraLlevar" && state.domicilioInfo) {
+      el.orderTableTitle.innerHTML =
+        "📦 " + escapeHtml(state.domicilioInfo.nombre || "Para llevar") +
+        '<span class="order-client-sub">Para llevar</span>';
     } else {
       el.orderTableTitle.textContent = "Mesa " + state.currentTable;
     }
@@ -715,6 +736,7 @@
     const key = mesaKeyCurrent();
     const tableNum = state.currentTable;
     const wasDomicilio = state.orderMode === "domicilio";
+    const wasParaLlevar = state.orderMode === "paraLlevar";
     const order = currentOrder();
     const metodo = selectedPayMethod;
 
@@ -734,13 +756,13 @@
           excepciones: it.exceptions || [],
         }));
         const pedidoExtra = {
-          tipoPedido: state.orderMode,
-          mesa: wasDomicilio ? null : tableNum,
-          nombreCliente: wasDomicilio ? state.domicilioInfo.nombre : null,
-          direccion: wasDomicilio ? state.domicilioInfo.direccion : null,
-          telefono: wasDomicilio ? state.domicilioInfo.telefono : null,
+          tipoPedido: wasParaLlevar ? "paraLlevar" : (wasDomicilio ? "domicilio" : "mesa"),
+          mesa: (wasDomicilio || wasParaLlevar) ? null : tableNum,
+          nombreCliente: (wasDomicilio || wasParaLlevar) ? state.domicilioInfo.nombre : null,
+          direccion: (wasDomicilio || wasParaLlevar) ? state.domicilioInfo.direccion : null,
+          telefono: (wasDomicilio || wasParaLlevar) ? state.domicilioInfo.telefono : null,
           productos: productos,
-          observaciones: wasDomicilio ? (state.domicilioInfo.observaciones || "") : "",
+          observaciones: (wasDomicilio || wasParaLlevar) ? (state.domicilioInfo.observaciones || "") : "",
           total: orderTotal(order),
           estado: "entregado",
         };
@@ -757,7 +779,7 @@
 
       state.sentPedidos[key] = [];
       clearCurrentOrder();
-      if (wasDomicilio) {
+      if (wasDomicilio || wasParaLlevar) {
         state.domicilioInfo = null;
         state.orderMode = null;
       }
@@ -767,12 +789,12 @@
       renderTables();
       renderProducts();
       renderOrder();
-      showToast(
-        wasDomicilio
-          ? "Pago registrado (" + metodo + ") · Domicilio entregado"
-          : "Pago registrado (" + metodo + ") · Mesa " + tableNum + " liberada"
-      );
-      if (wasDomicilio) openOrderTypeScreen();
+      let mensaje = "Pago registrado (" + metodo + ") · ";
+      if (wasParaLlevar) mensaje += "Pedido para llevar entregado";
+      else if (wasDomicilio) mensaje += "Domicilio entregado";
+      else mensaje += "Mesa " + tableNum + " liberada";
+      showToast(mensaje);
+      if (wasDomicilio || wasParaLlevar) openOrderTypeScreen();
     } catch (err) {
       console.error("Error al registrar el pago", err);
       showToast("No se pudo registrar el pago. Revisa tu conexión e intenta de nuevo.");
@@ -810,13 +832,13 @@
     }));
 
     const pedido = {
-      tipoPedido: state.orderMode,
-      mesa: state.orderMode === "mesa" ? state.currentTable : null,
-      nombreCliente: state.orderMode === "domicilio" ? state.domicilioInfo.nombre : null,
-      direccion: state.orderMode === "domicilio" ? state.domicilioInfo.direccion : null,
-      telefono: state.orderMode === "domicilio" ? state.domicilioInfo.telefono : null,
+      tipoPedido: state.orderMode === "paraLlevar" ? "paraLlevar" : state.orderMode,
+      mesa: (state.orderMode === "mesa") ? state.currentTable : null,
+      nombreCliente: (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") ? state.domicilioInfo.nombre : null,
+      direccion: (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") ? state.domicilioInfo.direccion : null,
+      telefono: (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") ? state.domicilioInfo.telefono : null,
       productos: productos,
-      observaciones: state.orderMode === "domicilio" ? (state.domicilioInfo.observaciones || "") : "",
+      observaciones: (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") ? (state.domicilioInfo.observaciones || "") : "",
       total: orderTotal(order),
       estado: "pendiente",
     };
@@ -976,7 +998,11 @@
     } else {
       filtradas.forEach((v) => {
         const esDom = v.tipoPedido === "domicilio";
-        const titulo = esDom ? ("🛵 " + escapeHtml(v.nombreCliente || "Domicilio")) : ("🍽️ Mesa " + escapeHtml(v.mesa));
+        const esParaLlevar = v.tipoPedido === "paraLlevar";
+        let titulo = "";
+        if (esParaLlevar) titulo = "📦 " + escapeHtml(v.nombreCliente || "Para llevar");
+        else if (esDom) titulo = "🛵 " + escapeHtml(v.nombreCliente || "Domicilio");
+        else titulo = "🍽️ Mesa " + escapeHtml(v.mesa);
         const item = document.createElement("div");
         item.className = "venta-item";
         item.innerHTML =
@@ -1042,9 +1068,11 @@
     } else {
       ordenados.forEach((p) => {
         const esDom = p.tipoPedido === "domicilio";
-        const titulo = esDom
-          ? "🛵 " + escapeHtml(p.nombreCliente || "Domicilio")
-          : "🍽️ Mesa " + escapeHtml(p.mesa);
+        const esParaLlevar = p.tipoPedido === "paraLlevar";
+        let titulo = "";
+        if (esParaLlevar) titulo = "📦 " + escapeHtml(p.nombreCliente || "Para llevar");
+        else if (esDom) titulo = "🛵 " + escapeHtml(p.nombreCliente || "Domicilio");
+        else titulo = "🍽️ Mesa " + escapeHtml(p.mesa);
         const fecha = p.hora && typeof p.hora.toDate === "function"
           ? p.hora.toDate().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
           : "";
@@ -1117,7 +1145,7 @@
   }
 
   function clearCurrentOrder() {
-    if (state.orderMode === "domicilio") {
+    if (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") {
       state.domicilioOrder = [];
     } else {
       state.tables[state.currentTable] = [];
@@ -1156,10 +1184,10 @@
       return;
     }
     
-    // Si es domicilio
-    if (state.orderMode === "domicilio") {
+    // Si es domicilio o para llevar
+    if (state.orderMode === "domicilio" || state.orderMode === "paraLlevar") {
       if (state.domicilioOrder.length > 0 || sentTotal("domicilio") > 0) {
-        if (confirm("¿Cerrar el domicilio actual y empezar uno nuevo?")) {
+        if (confirm("¿Cerrar el pedido actual y empezar uno nuevo?")) {
           state.domicilioOrder = [];
           state.sentPedidos.domicilio = [];
           state.domicilioInfo = null;
