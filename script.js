@@ -56,6 +56,8 @@
   ];
 
   const TABLE_COUNT = 5;
+     const PRECIO_DOMICILIO = 2000; // Recargo fijo por domicilio
+  const RECARGO_EMPACAR = 1000;  // Recargo por cada producto especial (Maduros, Tostones, Bowls)
   const STORAGE_KEY = "elPuntoDelMaduro_state_v1";
 
   /* ---------------------------------------------------------
@@ -143,8 +145,27 @@
     return state.orderMode === "domicilio" ? state.domicilioOrder : state.tables[state.currentTable];
   }
 
-  function orderTotal(order) {
-    return order.reduce((sum, it) => sum + it.price * it.qty, 0);
+   function orderTotal(order) {
+    // Calcula el total base de los productos
+    let total = order.reduce((sum, it) => sum + it.price * it.qty, 0);
+    
+    // Si es un domicilio, suma los 2.000 fijos
+    if (state.orderMode === "domicilio") {
+      total += PRECIO_DOMICILIO;
+    }
+
+    // Si tiene Maduros, Tostones o Bowls, suma 1.000 por cada uno de esos platos
+    const categoriasConRecargo = ["Maduros", "Tostones", "Bowls"];
+    order.forEach((it) => {
+      // Buscamos el producto en la lista global para saber su categoría
+      const productoOriginal = PRODUCTS.find(p => p.id === it.productId);
+      if (productoOriginal && categoriasConRecargo.includes(productoOriginal.cat)) {
+        total += (RECARGO_EMPACAR * it.qty);
+      }
+    });
+
+    return total;
+  }
   }
 
   function orderItemCount(order) {
@@ -730,7 +751,7 @@
       telefono: state.orderMode === "domicilio" ? state.domicilioInfo.telefono : null,
       productos: productos,
       observaciones: state.orderMode === "domicilio" ? (state.domicilioInfo.observaciones || "") : "",
-      total: orderTotal(order),
+            total: orderTotal(order), // Esto se queda igual, pero ahora usa la función nueva que ya suma los recargos
       estado: "pendiente",
     };
 
