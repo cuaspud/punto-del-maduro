@@ -298,26 +298,28 @@
 <script src="script.js"></script>
 <script type="module" src="firebase.js"></script>
   <script>
- // ----------------------------------------------------------------
-// ARREGLO DEFINITIVO - SIN FILTROS DE FECHA COMPLEJOS
+// ----------------------------------------------------------------
+// ARREGLO ULTRA DEFINITIVO - MUESTRA TODO SIN IMPORTAR LA FECHA
 // ----------------------------------------------------------------
 (function() {
     // Esperamos a que cargue el script principal
     const checkReady = setInterval(() => {
         if (typeof renderVentas !== 'undefined' && typeof ventasSelection !== 'undefined') {
             clearInterval(checkReady);
-            console.log("✅ Parche de ventas cargado correctamente.");
+            console.log("✅ Parche de ventas (ultra) cargado correctamente.");
 
             // Reemplazamos la función original
-            window.renderVentasOriginal = window.renderVentas;
             window.renderVentas = function(ventas) {
+                // CORRECCIÓN ULTRA: Mostramos TODOS los pedidos pagados, sin importar fecha
+                // Solo tomamos los últimos 50 para que no se llene la pantalla
+                const filtradas = ventas
+                    .filter(v => v.estado === "entregado" && v.pagado === true)
+                    .slice(-50); 
                 
-                // CORRECCIÓN: No filtramos por fecha, solo por si está pagado o entregado
-                const filtradas = ventas.filter(v => v.estado === "entregado" && v.pagado === true);
-                
-                const tituloTexto = "📊 Ventas registradas";
+                // Cambiamos el título para que sepas que no es solo "Hoy"
+                const tituloTexto = "📊 Últimas ventas registradas";
                 if (document.getElementById("ventasScreenTitle")) document.getElementById("ventasScreenTitle").textContent = tituloTexto;
-                if (document.getElementById("ventasTotalLabel")) document.getElementById("ventasTotalLabel").textContent = "Total vendido (sin filtro)";
+                if (document.getElementById("ventasTotalLabel")) document.getElementById("ventasTotalLabel").textContent = "Total general";
 
                 const ventasList = document.getElementById("ventasList");
                 ventasList.innerHTML = "";
@@ -335,18 +337,18 @@
                         const item = document.createElement("div");
                         item.className = "venta-item";
                         
-                        // Mostramos la hora de creación simple
-                        let horaStr = "--:--";
+                        // Intentamos mostrar la fecha real
+                        let fechaTexto = "Fecha desconocida";
                         if (v.hora && typeof v.hora.toDate === 'function') {
-                            horaStr = v.hora.toDate().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+                            fechaTexto = v.hora.toDate().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
                         } else if (v.horaPago && typeof v.horaPago.toDate === 'function') {
-                            horaStr = v.horaPago.toDate().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+                            fechaTexto = v.horaPago.toDate().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
                         }
                         
                         item.innerHTML =
                             `<div>
                                 <div class="venta-title">${titulo}</div>
-                                <div class="venta-sub">${horaStr} · ${v.metodoPago || ""}</div>
+                                <div class="venta-sub">${fechaTexto} · ${v.metodoPago || ""}</div>
                             </div>
                             <div class="venta-total">$${Math.round(v.total || 0).toLocaleString("es-CO")}</div>`;
                         ventasList.appendChild(item);
@@ -372,50 +374,6 @@
         }
     }, 500);
 })();
-          if (document.getElementById("ventasScreenTitle")) document.getElementById("ventasScreenTitle").textContent = tituloTexto;
-          if (document.getElementById("ventasTotalLabel")) document.getElementById("ventasTotalLabel").textContent = totalLabelTexto;
-
-          const ventasList = document.getElementById("ventasList");
-          ventasList.innerHTML = "";
-          if (filtradas.length === 0) {
-            const empty = document.createElement("div");
-            empty.className = "ventas-empty";
-            empty.id = "ventasEmpty";
-            empty.textContent = "No hay ventas registradas en esta fecha";
-            ventasList.appendChild(empty);
-          } else {
-            filtradas.forEach((v) => {
-              const esDom = v.tipoPedido === "domicilio";
-              const titulo = esDom ? ("🛵 " + (v.nombreCliente || "Domicilio")) : ("🍽️ Mesa " + v.mesa);
-              const item = document.createElement("div");
-              item.className = "venta-item";
-              const fechaMostrar = v.horaPago || v.hora;
-              const fechaTexto = typeof fechaMostrar.toDate === 'function' 
-                ? fechaMostrar.toDate().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) 
-                : "--:--";
-              item.innerHTML =
-                `<div>
-                   <div class="venta-title">${titulo}</div>
-                   <div class="venta-sub">${fechaTexto} · ${v.metodoPago || ""}</div>
-                 </div>
-                 <div class="venta-total">$${Math.round(v.total || 0).toLocaleString("es-CO")}</div>`;
-              ventasList.appendChild(item);
-            });
-          }
-
-          const totalFiltrado = filtradas.reduce((sum, v) => sum + (v.total || 0), 0);
-          document.getElementById("ventasTotalHoy").textContent = "$" + Math.round(totalFiltrado).toLocaleString("es-CO");
-          document.getElementById("ventasCountHoy").textContent = filtradas.length === 1 ? "1 venta" : filtradas.length + " ventas";
-
-          const sumaPorMetodo = (...metodos) =>
-            filtradas.filter((v) => metodos.includes(v.metodoPago)).reduce((sum, v) => sum + (v.total || 0), 0);
-          if (document.getElementById("ventasEfectivo")) document.getElementById("ventasEfectivo").textContent = "$" + Math.round(sumaPorMetodo("Efectivo")).toLocaleString("es-CO");
-          if (document.getElementById("ventasNequi")) document.getElementById("ventasNequi").textContent = "$" + Math.round(sumaPorMetodo("Nequi")).toLocaleString("es-CO");
-          if (document.getElementById("ventasTransferencia")) document.getElementById("ventasTransferencia").textContent = "$" + Math.round(sumaPorMetodo("FIOS", "Transferencia")).toLocaleString("es-CO");
-        };
-      }
-    }, 500);
-  })();
 </script>
   <script>
   // ----------------------------------------------------------------
