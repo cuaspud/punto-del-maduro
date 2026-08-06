@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (pestañas dinámicas y sin recargo de empaque)
+   script.js (solución error undefined en Firebase)
    ========================================================= */
 
 (function () {
@@ -138,7 +138,6 @@
     if (!order) return 0;
     let total = order.reduce((sum, it) => sum + it.price * it.qty, 0);
     
-    // Solo suma el costo de domicilio si aplica
     if (state.currentKey.startsWith("domicilio_")) {
       const info = state.orderInfo[state.currentKey];
       if (info && info.direccion !== "Para llevar") {
@@ -309,7 +308,7 @@
     const key = `llevar_${state.takeoutCounter}`;
     state.orders[key] = [];
     state.sentPedidos[key] = [];
-    state.orderInfo[key] = { nombre: `LLEVAR ${state.takeoutCounter}`, direccion: "Para llevar" };
+    state.orderInfo[key] = { nombre: `LLEVAR ${state.takeoutCounter}`, direccion: "Para llevar", telefono: "", observaciones: "" };
     closeModal(el.screenOrderType);
     closeModal(el.screenSelectTable);
     switchOrder(key);
@@ -539,9 +538,9 @@
         const pedidoExtra = {
           tipoPedido: isTakeout ? "paraLlevar" : (isDelivery ? "domicilio" : "mesa"),
           mesa: isMesa ? parseInt(key.replace("mesa_", "")) : null,
-          nombreCliente: (isDelivery || isTakeout) ? info.nombre : null,
-          direccion: (isDelivery || isTakeout) ? info.direccion : null,
-          telefono: (isDelivery || isTakeout) ? info.telefono : null,
+          nombreCliente: (isDelivery || isTakeout) ? (info.nombre || "Cliente") : null,
+          direccion: (isDelivery || isTakeout) ? (info.direccion || "") : null,
+          telefono: (isDelivery || isTakeout) ? (info.telefono || "") : null,
           productos: productos,
           observaciones: (isDelivery || isTakeout) ? (info.observaciones || "") : "",
           total: orderTotal(order),
@@ -616,9 +615,9 @@
     const pedido = {
       tipoPedido: isTakeout ? "paraLlevar" : (isDelivery ? "domicilio" : "mesa"),
       mesa: isMesa ? parseInt(key.replace("mesa_", "")) : null,
-      nombreCliente: (isDelivery || isTakeout) ? info.nombre : null,
-      direccion: (isDelivery || isTakeout) ? info.direccion : null,
-      telefono: (isDelivery || isTakeout) ? info.telefono : null,
+      nombreCliente: (isDelivery || isTakeout) ? (info.nombre || "Cliente") : null,
+      direccion: (isDelivery || isTakeout) ? (info.direccion || "") : null,
+      telefono: (isDelivery || isTakeout) ? (info.telefono || "") : null,
       productos: productos,
       observaciones: (isDelivery || isTakeout) ? (info.observaciones || "") : "",
       total: orderTotal(order),
