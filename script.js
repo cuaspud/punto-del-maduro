@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con pestañas dinámicas para Llevar y Domicilio)
+   script.js (pestañas dinámicas y sin recargo de empaque)
    ========================================================= */
 
 (function () {
@@ -52,7 +52,6 @@
 
   const TABLE_COUNT = 5;
   const PRECIO_DOMICILIO = 2000;
-  const RECARGO_EMPACAR = 1000;
   const STORAGE_KEY = "elPuntoDelMaduro_state_v2";
 
   /* ---------------------------------------------------------
@@ -139,21 +138,12 @@
     if (!order) return 0;
     let total = order.reduce((sum, it) => sum + it.price * it.qty, 0);
     
+    // Solo suma el costo de domicilio si aplica
     if (state.currentKey.startsWith("domicilio_")) {
       const info = state.orderInfo[state.currentKey];
       if (info && info.direccion !== "Para llevar") {
         total += PRECIO_DOMICILIO;
       }
-    }
-
-    if (state.currentKey.startsWith("llevar_") || state.currentKey.startsWith("domicilio_")) {
-      const categoriasConRecargo = ["Maduros", "Tostones", "Bowls"];
-      order.forEach((it) => {
-        const productoOriginal = PRODUCTS.find(p => p.id === it.productId);
-        if (productoOriginal && categoriasConRecargo.includes(productoOriginal.cat)) {
-          total += (RECARGO_EMPACAR * it.qty);
-        }
-      });
     }
 
     return total;
