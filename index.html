@@ -299,6 +299,89 @@
 <script type="module" src="firebase.js"></script>
   <script>
   // ----------------------------------------------------------------
+  // ARREGLO DEFINITIVO PARA QUE APAREZCAN LAS VENTAS
+  // ----------------------------------------------------------------
+  (function() {
+    // Esperamos a que cargue el script principal
+    const checkReady = setInterval(() => {
+      if (typeof renderVentas !== 'undefined' && typeof ventasSelection !== 'undefined') {
+        clearInterval(checkReady);
+        
+        console.log("✅ Parche de ventas cargado correctamente.");
+
+        // Sobrescribimos la función original con la versión que usa hora o horaPago
+        window.renderVentasOriginal = window.renderVentas;
+        window.renderVentas = function(ventas) {
+          let filtradas;
+          let tituloTexto;
+          let totalLabelTexto;
+
+          if (ventasSelection.type === "month") {
+            filtradas = ventas.filter((v) => {
+              const fecha = v.horaPago || v.hora;
+              return monthKeyOf(fechaDeHora(fecha)) === ventasSelection.key;
+            });
+            const [y, m] = ventasSelection.key.split("-");
+            tituloTexto = "📊 Ventas de " + MESES[parseInt(m, 10) - 1] + " " + y;
+            totalLabelTexto = "Total vendido en el mes";
+          } else {
+            filtradas = ventas.filter((v) => {
+              const fecha = v.horaPago || v.hora;
+              return dayKeyOf(fechaDeHora(fecha)) === ventasSelection.key;
+            });
+            const esHoySeleccionado = ventasSelection.key === dayKeyOf(new Date());
+            const [y, m, d] = ventasSelection.key.split("-");
+            tituloTexto = esHoySeleccionado ? "📊 Ventas de hoy" : "📊 Ventas del " + d + "/" + m + "/" + y;
+            totalLabelTexto = esHoySeleccionado ? "Total vendido hoy" : "Total vendido ese día";
+          }
+
+          if (document.getElementById("ventasScreenTitle")) document.getElementById("ventasScreenTitle").textContent = tituloTexto;
+          if (document.getElementById("ventasTotalLabel")) document.getElementById("ventasTotalLabel").textContent = totalLabelTexto;
+
+          const ventasList = document.getElementById("ventasList");
+          ventasList.innerHTML = "";
+          if (filtradas.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "ventas-empty";
+            empty.id = "ventasEmpty";
+            empty.textContent = "No hay ventas registradas en esta fecha";
+            ventasList.appendChild(empty);
+          } else {
+            filtradas.forEach((v) => {
+              const esDom = v.tipoPedido === "domicilio";
+              const titulo = esDom ? ("🛵 " + (v.nombreCliente || "Domicilio")) : ("🍽️ Mesa " + v.mesa);
+              const item = document.createElement("div");
+              item.className = "venta-item";
+              const fechaMostrar = v.horaPago || v.hora;
+              const fechaTexto = typeof fechaMostrar.toDate === 'function' 
+                ? fechaMostrar.toDate().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) 
+                : "--:--";
+              item.innerHTML =
+                `<div>
+                   <div class="venta-title">${titulo}</div>
+                   <div class="venta-sub">${fechaTexto} · ${v.metodoPago || ""}</div>
+                 </div>
+                 <div class="venta-total">$${Math.round(v.total || 0).toLocaleString("es-CO")}</div>`;
+              ventasList.appendChild(item);
+            });
+          }
+
+          const totalFiltrado = filtradas.reduce((sum, v) => sum + (v.total || 0), 0);
+          document.getElementById("ventasTotalHoy").textContent = "$" + Math.round(totalFiltrado).toLocaleString("es-CO");
+          document.getElementById("ventasCountHoy").textContent = filtradas.length === 1 ? "1 venta" : filtradas.length + " ventas";
+
+          const sumaPorMetodo = (...metodos) =>
+            filtradas.filter((v) => metodos.includes(v.metodoPago)).reduce((sum, v) => sum + (v.total || 0), 0);
+          if (document.getElementById("ventasEfectivo")) document.getElementById("ventasEfectivo").textContent = "$" + Math.round(sumaPorMetodo("Efectivo")).toLocaleString("es-CO");
+          if (document.getElementById("ventasNequi")) document.getElementById("ventasNequi").textContent = "$" + Math.round(sumaPorMetodo("Nequi")).toLocaleString("es-CO");
+          if (document.getElementById("ventasTransferencia")) document.getElementById("ventasTransferencia").textContent = "$" + Math.round(sumaPorMetodo("FIOS", "Transferencia")).toLocaleString("es-CO");
+        };
+      }
+    }, 500);
+  })();
+</script>
+  <script>
+  // ----------------------------------------------------------------
   // NUEVO: CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA
   // ----------------------------------------------------------------
   (function() {
