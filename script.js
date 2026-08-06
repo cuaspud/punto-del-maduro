@@ -1212,30 +1212,27 @@
     btn.addEventListener("click", () => {
       selectedPayMethod = btn.getAttribute("data-method");
       el.payMethods.querySelectorAll(".pay-method").forEach((b) => b.classList.remove("selected"));
-      btn.classList.add("selected");
-      el.btnConfirmPay.disabled = false;
-    });
-  });
+btn.classList.add("selected");
+el.btnConfirmPay.disabled = false;
 
-  /* ---------------------------------------------------------
-     INIT
-  --------------------------------------------------------- */
-  function init() {
-    loadState();
-    renderTables();
-    renderCategories();
-    renderProducts();
-    renderOrder();
-    renderSelectTableGrid();
-    initVentasListener();
-    initEntregadosListener();
+/* ---------------------------------------------------------
+   INIT
+--------------------------------------------------------- */
+function init() {
+  loadState();
+  renderTables();
+  renderCategories();
+  renderProducts();
+  renderOrder();
+  renderSelectTableGrid();
+  initVentasListener();
+  initEntregadosListener();
 
-    // Antes de comenzar un pedido, se debe elegir el tipo (Mesa / Domicilio)
-    if (!state.orderMode || (state.orderMode === "domicilio" && !state.domicilioInfo)) {
-      state.orderMode = null;
-      openOrderTypeScreen();
-    }
+  // Antes de comenzar un pedido, se debe elegir el tipo (Mesa / Domicilio)
+  if (!state.orderMode || (state.orderMode === "domicilio" && !state.domicilioInfo)) {
+    state.orderMode = null;
+    openOrderTypeScreen();
   }
-
+}
   init();
 })();
