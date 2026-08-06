@@ -646,7 +646,10 @@
           total: orderTotal(order),
           estado: "entregado",
         };
-        const ref = await window.PedidosCocina.enviarPedido(pedidoExtra);
+          // Enviamos el pedido extra y obtenemos su referencia
+   const ref = await window.PedidosCocina.enviarPedido(pedidoExtra);
+   // ¡CORRECCIÓN! Marcamos este pedido como pagado INMEDIATAMENTE al crearlo
+   await window.PedidosCocina.cobrarPedidos([ref.id], metodo);
         state.sentPedidos[key] = state.sentPedidos[key] || [];
         state.sentPedidos[key].push({ id: ref.id, total: pedidoExtra.total });
       }
