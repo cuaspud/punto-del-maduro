@@ -277,51 +277,104 @@
     entregadosCount: document.getElementById("entregadosCount"),
   };
 
- /* ---------------------------------------------------------
-     RENDER: MESAS + DOMICILIOS
+/* ---------------------------------------------------------
+     RENDER: MESAS + DOMICILIOS + ESTADO DE OCUPACIÓN
   --------------------------------------------------------- */
-  function renderTables() {
-    el.tablesBar.innerHTML = "";
-    
-    // 1. Mostrar mesas
-    for (let i = 1; i <= TABLE_COUNT; i++) {
-      const owed = sentTotal(i) + orderTotal(state.tables[i]);
+function renderTables() {
+  el.tablesBar.innerHTML = "";
+  
+  // Contar mesas ocupadas
+  let mesasOcupadas = 0;
+  for (let i = 1; i <= TABLE_COUNT; i++) {
+    const owed = sentTotal(i) + orderTotal(state.tables[i]);
+    if (owed > 0 || state.tables[i].length > 0) {
+      mesasOcupadas++;
+    }
+  }
+  
+  // 1. Mostrar mesas
+  for (let i = 1; i <= TABLE_COUNT; i++) {
+    const owed = sentTotal(i) + orderTotal(state.tables[i]);
+    const estaOcupada = owed > 0 || state.tables[i].length > 0;
+    const btn = document.createElement("button");
+    btn.className = "table-btn" + (i === state.currentTable && state.orderMode !== "domicilio" ? " active" : "") +
+      (estaOcupada ? " has-order" : "");
+    btn.innerHTML =
+      `<span>Mesa ${i}</span>` +
+      `<span class="table-sub">${estaOcupada ? formatCOP(owed) : (mesasOcupadas >= TABLE_COUNT ? "🚫 Ocupada" : "Libre")}</span>`;
+    btn.addEventListener("click", () => selectTable(i));
+    el.tablesBar.appendChild(btn);
+  }
+  
+  // 2. Mostrar domicilios activos
+  const domiciliosActivos = getDomiciliosActivos();
+  if (domiciliosActivos.length > 0 || state.orderMode === "domicilio") {
+    domiciliosActivos.forEach((dom) => {
+      const totalDomicilio = state.sentPedidos.domicilio 
+        ? state.sentPedidos.domicilio.reduce((s, item) => s + (item.total || 0), 0) 
+        : 0;
       const btn = document.createElement("button");
-      btn.className = "table-btn" + (i === state.currentTable && state.orderMode !== "domicilio" ? " active" : "") +
-        (owed > 0 ? " has-order" : "");
+      const isActive = state.orderMode === "domicilio" && state.domicilioInfo && 
+        state.domicilioInfo.nombre === dom.nombre;
+      btn.className = "table-btn" + (isActive ? " active" : "") + 
+        (totalDomicilio > 0 ? " has-order" : "");
       btn.innerHTML =
-        `<span>Mesa ${i}</span>` +
-        `<span class="table-sub">${owed > 0 ? formatCOP(owed) : "Libre"}</span>`;
-      btn.addEventListener("click", () => selectTable(i));
+        `<span>🛵 ${escapeHtml(dom.nombre || "Domicilio")}</span>` +
+        `<span class="table-sub">${totalDomicilio > 0 ? formatCOP(totalDomicilio) : "Activo"}</span>`;
+      btn.addEventListener("click", () => selectDomicilio(dom.nombre, dom.direccion || ""));
       el.tablesBar.appendChild(btn);
-    }
-    
-    // 2. Mostrar domicilios activos
-    const domiciliosActivos = getDomiciliosActivos();
-    if (domiciliosActivos.length > 0 || state.orderMode === "domicilio") {
-      // Mostrar domicilios con pedidos activos
-      const domiciliosUnicos = new Set();
-      domiciliosActivos.forEach((p) => {
-        const key = p.nombreCliente + "|" + p.direccion;
-        if (!domiciliosUnicos.has(key)) {
-          domiciliosUnicos.add(key);
-          const totalDomicilio = state.sentPedidos.domicilio 
-            ? state.sentPedidos.domicilio.reduce((s, item) => s + (item.total || 0), 0) 
-            : 0;
-          const btn = document.createElement("button");
-          const isActive = state.orderMode === "domicilio" && state.domicilioInfo && 
-            state.domicilioInfo.nombre === p.nombreCliente;
-          btn.className = "table-btn" + (isActive ? " active" : "") + 
-            (totalDomicilio > 0 ? " has-order" : "");
-          btn.innerHTML =
-            `<span>🛵 ${escapeHtml(p.nombreCliente || "Domicilio")}</span>` +
-            `<span class="table-sub">${totalDomicilio > 0 ? formatCOP(totalDomicilio) : "Activo"}</span>`;
-          btn.addEventListener("click", () => selectDomicilio(p.nombreCliente, p.direccion));
-          el.tablesBar.appendChild(btn);
-        }
-      });
-    }
-    
+    });
+  }
+  
+  // 3. Botón para nuevo domicilio o para llevar
+  if (state.orderMode !== "domicilio" || !state.domicilioInfo) {
+    const btn = document.createElement("button");
+    btn.className = "table-btn";
+    btn.style.border = "2px dashed var(--green)";
+    btn.innerHTML = `<span>📦 Para llevar</span><span class="table-sub">${mesasOcupadas >= TABLE_COUNT ? "🚫 Sin mesas" : "Nuevo"}</span>`;
+    btn.addEventListener("click", () => {
+      if (mesasOcupadas >= TABLE_COUNT) {
+        // Todas ocupadas, ofrecer para llevar
+        iniciarPedidoParaLlevar();
+      } else {
+        state.orderMode = "domicilio";
+        state.domicilioInfo = null;
+        state.domicilioOrder = [];
+        openModal(el.modalDomicilio);
+      }
+    });
+    el.tablesBar.appendChild(btn);
+  }
+}
+   // Función auxiliar para obtener domicilios activos
+function getDomiciliosActivos() {
+  const domicilios = [];
+  if (state.domicilioInfo && state.sentPedidos.domicilio && state.sentPedidos.domicilio.length > 0) {
+    domicilios.push({
+      nombre: state.domicilioInfo.nombre,
+      direccion: state.domicilioInfo.direccion,
+      total: state.sentPedidos.domicilio.reduce((s, p) => s + p.total, 0)
+    });
+  }
+  return domicilios;
+}
+
+function selectDomicilio(nombre, direccion) {
+  state.orderMode = "domicilio";
+  state.domicilioInfo = {
+    nombre: nombre,
+    direccion: direccion,
+    telefono: "",
+    observaciones: ""
+  };
+  state.domicilioOrder = [];
+  saveState();
+  renderTables();
+  renderCategories();
+  renderProducts();
+  renderOrder();
+  showToast("Domicilio seleccionado: " + nombre);
+}
     // 3. Botón para nuevo domicilio
     if (state.orderMode === "domicilio" || state.domicilioInfo) {
       // Ya hay un domicilio activo, no mostrar botón extra
@@ -1233,6 +1286,42 @@ function init() {
   if (!state.orderMode || (state.orderMode === "domicilio" && !state.domicilioInfo)) {
     state.orderMode = null;
     openOrderTypeScreen();
+  }
+}
+/* ---------------------------------------------------------
+     NUEVO: PEDIDO PARA LLEVAR (cuando no hay mesas)
+  --------------------------------------------------------- */
+function iniciarPedidoParaLlevar() {
+  // Verificar si hay mesas disponibles
+  const mesasOcupadas = [];
+  for (let i = 1; i <= TABLE_COUNT; i++) {
+    const owed = sentTotal(i) + orderTotal(state.tables[i]);
+    if (owed > 0 || state.tables[i].length > 0) {
+      mesasOcupadas.push(i);
+    }
+  }
+  
+  if (mesasOcupadas.length >= TABLE_COUNT) {
+    // Todas las mesas están ocupadas
+    if (confirm("⚠️ Todas las mesas están ocupadas. ¿Quieres crear un pedido para llevar (espera)?")) {
+      state.orderMode = "domicilio";
+      state.domicilioInfo = {
+        nombre: "Cliente en espera",
+        direccion: "Para llevar",
+        telefono: "",
+        observaciones: "Cliente esperando mesa"
+      };
+      state.domicilioOrder = [];
+      saveState();
+      renderTables();
+      renderCategories();
+      renderProducts();
+      renderOrder();
+      showToast("📦 Pedido para llevar creado");
+      closeModal(el.screenSelectTable);
+    }
+  } else {
+    openModal(el.screenSelectTable);
   }
 }
   init();
