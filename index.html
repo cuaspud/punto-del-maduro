@@ -463,6 +463,48 @@
       initEscuchaListosMesero();
     }
   })();
+    
+  // ----------------------------------------------------------------
+  // LECTURA DIRECTA DE FIRESTORE (Sin errores de filtro)
+  // ----------------------------------------------------------------
+  async function cargarVentasDirectas() {
+    try {
+      const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+      const db = getFirestore(window.firebaseApp);
+      
+      const querySnapshot = await getDocs(collection(db, "pedidosCocina"));
+      
+      let total = 0;
+      let count = 0;
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        // Solo contamos los que están pagados y entregados
+        if (data.pagado === true && data.estado === "entregado") {
+          total += (data.total || 0);
+          count++;
+        }
+      });
+
+      const elTotal = document.getElementById("totalDirectoFirebase");
+      if (elTotal) {
+        elTotal.textContent = "$" + Math.round(total).toLocaleString("es-CO");
+      }
+      console.log("💰 Lectura directa exitosa. Total: $" + total + " (" + count + " ventas)");
+      
+    } catch (error) {
+      console.error("❌ Error en lectura directa:", error);
+      document.getElementById("totalDirectoFirebase").textContent = "❌ Error al leer";
+    }
+  }
+
+  // Cuando se cargue la página, asignamos el evento al botón
+  document.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("btnForzarCarga");
+    if (btn) {
+      btn.addEventListener("click", cargarVentasDirectas);
+    }
+  });
 </script>
 </body>
 </html>
