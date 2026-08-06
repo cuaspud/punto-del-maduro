@@ -1182,39 +1182,40 @@
     return div.innerHTML;
   }
 
-  /* ---------------------------------------------------------
-     EVENTOS GLOBALES
-  --------------------------------------------------------- */
-  el.btnCharge.addEventListener("click", openPaymentModal);
-  el.btnNewOrder.addEventListener("click", newOrder);
-  el.btnSaveExceptions.addEventListener("click", saveExceptions);
-  el.btnConfirmPay.addEventListener("click", confirmPayment);
+/* ---------------------------------------------------------
+   EVENTOS GLOBALES
+--------------------------------------------------------- */
+el.btnCharge.addEventListener("click", openPaymentModal);
+el.btnNewOrder.addEventListener("click", newOrder);  // ← Cambiar e1 por el
+el.btnSaveExceptions.addEventListener("click", saveExceptions);
+el.btnConfirmPay.addEventListener("click", confirmPayment);
 
-  // NUEVO: tipo de pedido
-  el.btnKitchen.addEventListener("click", sendToKitchen);
-  el.btnOrderType.addEventListener("click", openOrderTypeScreen);
-  el.btnPickMesa.addEventListener("click", () => {
-    closeModal(el.screenOrderType);
-    openModal(el.screenSelectTable);
+// NUEVO: tipo de pedido
+el.btnKitchen.addEventListener("click", sendToKitchen);
+el.btnOrderType.addEventListener("click", openOrderTypeScreen);
+el.btnPickMesa.addEventListener("click", () => {
+  closeModal(el.screenOrderType);
+  openModal(el.screenSelectTable);
+});  // ← Cerrar correctamente
+
+el.btnPickDomicilio.addEventListener("click", pickDomicilio);
+el.btnSaveDomicilio.addEventListener("click", saveDomicilio);
+el.btnVentas.addEventListener("click", () => {
+  // Cada vez que se abre la pantalla, vuelve a mostrar "Hoy" por defecto
+  ventasSelection = { type: "day", key: dayKeyOf(new Date()) };
+  renderVentasDaysPanel();
+  renderVentas(lastVentasRaw);
+  openModal(el.screenVentas);
+});  // ← Cerrar correctamente
+
+el.payMethods.querySelectorAll(".pay-method").forEach((btn) => {  // ← Cambiar e1.ptayMethods por el.payMethods
+  btn.addEventListener("click", () => {
+    selectedPayMethod = btn.getAttribute("data-method");
+    el.payMethods.querySelectorAll(".pay-method").forEach((b) => b.classList.remove("selected"));  // ← classList, no classist
+    btn.classList.add("selected");  // ← classList, no classist
+    el.btnConfirmPay.disabled = false;
   });
-  el.btnPickDomicilio.addEventListener("click", pickDomicilio);
-  el.btnSaveDomicilio.addEventListener("click", saveDomicilio);
-  el.btnVentas.addEventListener("click", () => {
-    // Cada vez que se abre la pantalla, vuelve a mostrar "Hoy" por defecto
-    ventasSelection = { type: "day", key: dayKeyOf(new Date()) };
-    renderVentasDaysPanel();
-    renderVentas(lastVentasRaw);
-    openModal(el.screenVentas);
-  });
-  el.btnEntregados.addEventListener("click", () => openModal(el.screenEntregados));
-
-  el.payMethods.querySelectorAll(".pay-method").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      selectedPayMethod = btn.getAttribute("data-method");
-      el.payMethods.querySelectorAll(".pay-method").forEach((b) => b.classList.remove("selected"));
-btn.classList.add("selected");
-el.btnConfirmPay.disabled = false;
-
+});
 /* ---------------------------------------------------------
    INIT
 --------------------------------------------------------- */
