@@ -647,8 +647,16 @@
           estado: "entregado",
         };
           // Enviamos el pedido extra y obtenemos su referencia
-   const ref = await window.PedidosCocina.enviarPedido(pedidoExtra);
-   // ¡CORRECCIÓN! Marcamos este pedido como pagado INMEDIATAMENTE al crearlo
+           // Enviamos el pedido a Firebase
+        const ref = await window.PedidosCocina.enviarPedido(pedidoExtra);
+        
+        // Guardamos este pedido localmente para el historial de la mesa
+        state.sentPedidos[key] = state.sentPedidos[key] || [];
+        state.sentPedidos[key].push({ id: ref.id, total: pedidoExtra.total });
+
+        // 🚨 LA CLAVE PARA QUE APAREZCA EN VENTAS: 
+        // Lo marcamos como pagado aquí mismo antes de que el sistema se olvide
+        await window.PedidosCocina.cobrarPedidos([ref.id], metodo);
    await window.PedidosCocina.cobrarPedidos([ref.id], metodo);
         state.sentPedidos[key] = state.sentPedidos[key] || [];
         state.sentPedidos[key].push({ id: ref.id, total: pedidoExtra.total });
