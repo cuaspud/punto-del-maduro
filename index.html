@@ -303,9 +303,16 @@
 <!-- ===================== TOAST ===================== -->
 <div class="toast" id="toast"></div>
 
-<script src="script.js"></script>
+<!-- ============================================================
+     ORDEN CORRECTO: PRIMERO FIREBASE, LUEGO SCRIPT.JS
+     ============================================================ -->
 <script type="module" src="firebase.js"></script>
-  <script>
+<script src="script.js"></script>
+
+<!-- ============================================================
+     PARCHES Y SCRIPTS ADICIONALES (ya no dependen del orden)
+     ============================================================ -->
+<script>
 // ----------------------------------------------------------------
 // ARREGLO ULTRA DEFINITIVO - MUESTRA TODO SIN IMPORTAR LA FECHA
 // ----------------------------------------------------------------
@@ -383,11 +390,12 @@
     }, 500);
 })();
 </script>
-  <script>
-  // ----------------------------------------------------------------
-  // NUEVO: CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA
-  // ----------------------------------------------------------------
-  (function() {
+
+<script>
+// ----------------------------------------------------------------
+// NUEVO: CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA
+// ----------------------------------------------------------------
+(function() {
     "use strict";
 
     // 1. Sonido para el mesero cuando un pedido está listo
@@ -506,5 +514,6 @@
     }
   });
 </script>
+
 </body>
 </html>
