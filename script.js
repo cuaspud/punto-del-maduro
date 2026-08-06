@@ -277,16 +277,17 @@
     entregadosCount: document.getElementById("entregadosCount"),
   };
 
-  /* ---------------------------------------------------------
-     RENDER: MESAS
+ /* ---------------------------------------------------------
+     RENDER: MESAS + DOMICILIOS
   --------------------------------------------------------- */
   function renderTables() {
-    el.tablesBar.style.display = state.orderMode === "domicilio" ? "none" : "";
     el.tablesBar.innerHTML = "";
+    
+    // 1. Mostrar mesas
     for (let i = 1; i <= TABLE_COUNT; i++) {
       const owed = sentTotal(i) + orderTotal(state.tables[i]);
       const btn = document.createElement("button");
-      btn.className = "table-btn" + (i === state.currentTable ? " active" : "") +
+      btn.className = "table-btn" + (i === state.currentTable && state.orderMode !== "domicilio" ? " active" : "") +
         (owed > 0 ? " has-order" : "");
       btn.innerHTML =
         `<span>Mesa ${i}</span>` +
@@ -294,14 +295,84 @@
       btn.addEventListener("click", () => selectTable(i));
       el.tablesBar.appendChild(btn);
     }
+    
+    // 2. Mostrar domicilios activos
+    const domiciliosActivos = getDomiciliosActivos();
+    if (domiciliosActivos.length > 0 || state.orderMode === "domicilio") {
+      // Mostrar domicilios con pedidos activos
+      const domiciliosUnicos = new Set();
+      domiciliosActivos.forEach((p) => {
+        const key = p.nombreCliente + "|" + p.direccion;
+        if (!domiciliosUnicos.has(key)) {
+          domiciliosUnicos.add(key);
+          const totalDomicilio = state.sentPedidos.domicilio 
+            ? state.sentPedidos.domicilio.reduce((s, item) => s + (item.total || 0), 0) 
+            : 0;
+          const btn = document.createElement("button");
+          const isActive = state.orderMode === "domicilio" && state.domicilioInfo && 
+            state.domicilioInfo.nombre === p.nombreCliente;
+          btn.className = "table-btn" + (isActive ? " active" : "") + 
+            (totalDomicilio > 0 ? " has-order" : "");
+          btn.innerHTML =
+            `<span>🛵 ${escapeHtml(p.nombreCliente || "Domicilio")}</span>` +
+            `<span class="table-sub">${totalDomicilio > 0 ? formatCOP(totalDomicilio) : "Activo"}</span>`;
+          btn.addEventListener("click", () => selectDomicilio(p.nombreCliente, p.direccion));
+          el.tablesBar.appendChild(btn);
+        }
+      });
+    }
+    
+    // 3. Botón para nuevo domicilio
+    if (state.orderMode === "domicilio" || state.domicilioInfo) {
+      // Ya hay un domicilio activo, no mostrar botón extra
+    } else {
+      const btn = document.createElement("button");
+      btn.className = "table-btn";
+      btn.style.border = "2px dashed var(--green)";
+      btn.innerHTML = `<span>➕ Domicilio</span><span class="table-sub">Nuevo</span>`;
+      btn.addEventListener("click", () => {
+        state.orderMode = "domicilio";
+        state.domicilioInfo = null;
+        state.domicilioOrder = [];
+        openModal(el.modalDomicilio);
+      });
+      el.tablesBar.appendChild(btn);
+    }
   }
 
-  function selectTable(tableNum) {
-    state.currentTable = tableNum;
+  // Función auxiliar para obtener domicilios activos
+  function getDomiciliosActivos() {
+    // Buscar en los pedidos enviados a cocina que sean domicilios
+    const domicilios = [];
+    if (state.sentPedidos.domicilio) {
+      // Como no tenemos los datos completos del cliente, 
+      // usamos el domicilioInfo actual si existe
+      if (state.domicilioInfo && state.sentPedidos.domicilio.length > 0) {
+        domicilios.push({
+          nombreCliente: state.domicilioInfo.nombre,
+          direccion: state.domicilioInfo.direccion,
+          total: state.sentPedidos.domicilio.reduce((s, p) => s + p.total, 0)
+        });
+      }
+    }
+    return domicilios;
+  }
+
+  function selectDomicilio(nombre, direccion) {
+    state.orderMode = "domicilio";
+    state.domicilioInfo = {
+      nombre: nombre,
+      direccion: direccion,
+      telefono: "",
+      observaciones: ""
+    };
+    state.domicilioOrder = [];
     saveState();
     renderTables();
+    renderCategories();
     renderProducts();
     renderOrder();
+    showToast("Domicilio seleccionado: " + nombre);
   }
 
   /* ---------------------------------------------------------
