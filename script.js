@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con botón eliminar para llevar/domicilio)
+   script.js (muestra pedidos para llevar aunque estén vacíos)
    ========================================================= */
 
 (function () {
@@ -88,10 +88,8 @@
   --------------------------------------------------------- */
   function saveState() {
     try {
-      const dynamicKeys = Object.keys(state.orders).filter(k => 
-        (k.startsWith("llevar_") || k.startsWith("domicilio_")) &&
-        (state.orders[k].length > 0 || (state.sentPedidos[k] && state.sentPedidos[k].length > 0))
-      );
+      // Guardamos todas las claves dinámicas que existen en orderInfo (incluso vacías)
+      const dynamicKeys = Object.keys(state.orderInfo).filter(k => k.startsWith("llevar_") || k.startsWith("domicilio_"));
       const dynamicOrderInfo = {};
       dynamicKeys.forEach(k => {
         if (state.orderInfo[k]) {
@@ -126,6 +124,7 @@
       state.takeoutCounter = parsed.takeoutCounter || 0;
       state.deliveryCounter = parsed.deliveryCounter || 0;
 
+      // Restaurar claves dinámicas
       const dynamicKeys = parsed.dynamicKeys || [];
       dynamicKeys.forEach(k => {
         if (state.orderInfo[k]) {
@@ -133,6 +132,7 @@
           if (!state.sentPedidos[k]) state.sentPedidos[k] = [];
         }
       });
+      console.log("✅ Claves dinámicas recuperadas:", dynamicKeys);
     } catch (e) {
       console.error("No se pudo cargar el estado", e);
     }
@@ -256,7 +256,7 @@
     btnAgregarPago: document.getElementById("btnAgregarPago"),
     btnFinalizarPago: document.getElementById("btnFinalizarPago"),
     payPendiente: document.getElementById("payPendiente"),
-    orderFooter: document.getElementById("orderFooter"), // Añadir referencia al footer
+    orderFooter: document.getElementById("orderFooter"),
   };
 
   /* ---------------------------------------------------------
@@ -272,7 +272,9 @@
       setTimeout(() => suscribirCarrito(key), 1000);
       return;
     }
+    console.log(`🔔 Suscribiendo a carrito: ${key}`);
     carritoUnsubscribe = window.PedidosCocina.escucharCarrito(key, (items) => {
+      console.log(`📥 Carrito RECIBIDO para ${key}:`, JSON.stringify(items));
       const currentItems = state.orders[key] || [];
       if (JSON.stringify(currentItems) !== JSON.stringify(items)) {
         state.orders[key] = items || [];
@@ -294,6 +296,7 @@
     }
     try {
       await window.PedidosCocina.guardarCarrito(key, items);
+      console.log(`✅ Carrito GUARDADO para ${key}`);
     } catch (e) {
       console.error("❌ Error guardando carrito:", e);
       setTimeout(() => guardarCarritoRemoto(key, items), 3000);
@@ -304,6 +307,7 @@
     if (!window.PedidosCocina || typeof window.PedidosCocina.eliminarCarrito !== "function") return;
     try {
       await window.PedidosCocina.eliminarCarrito(key);
+      console.log(`🗑️ Carrito eliminado: ${key}`);
     } catch (e) {
       console.error("Error eliminando carrito:", e);
     }
@@ -390,7 +394,9 @@
   --------------------------------------------------------- */
   function renderTables() {
     el.tablesBar.innerHTML = "";
+    console.log("🔄 Renderizando mesas. Claves actuales:", Object.keys(state.orders));
 
+    // Mesas fijas
     for (let i = 1; i <= TABLE_COUNT; i++) {
       const key = `mesa_${i}`;
       if (!state.orders[key]) state.orders[key] = [];
@@ -405,10 +411,15 @@
       el.tablesBar.appendChild(btn);
     }
 
-    const llevarKeys = Object.keys(state.orders).filter(k => k.startsWith("llevar_"));
+    // 🔥 PEDIDOS "PARA LLEVAR" - mostrar TODOS los que existen en orderInfo
+    const llevarKeys = Object.keys(state.orderInfo).filter(k => k.startsWith("llevar_"));
+    console.log("📦 Claves para llevar (orderInfo):", llevarKeys);
     llevarKeys.forEach((key) => {
+      // Si la clave no existe en state.orders, la creamos (por si acaso)
+      if (!state.orders[key]) state.orders[key] = [];
+      if (!state.sentPedidos[key]) state.sentPedidos[key] = [];
+
       const owed = sentTotal(key) + orderTotal(state.orders[key]);
-      if (state.orders[key].length === 0 && sentTotal(key) === 0) return;
       const info = state.orderInfo[key] || {};
       const label = info.nombre || ("LLEVAR " + key.replace("llevar_", ""));
       const btn = document.createElement("button");
@@ -427,10 +438,14 @@
     btnNuevoLlevar.addEventListener("click", crearPedidoParaLlevar);
     el.tablesBar.appendChild(btnNuevoLlevar);
 
-    const domicilioKeys = Object.keys(state.orders).filter(k => k.startsWith("domicilio_"));
+    // 🔥 PEDIDOS "DOMICILIO"
+    const domicilioKeys = Object.keys(state.orderInfo).filter(k => k.startsWith("domicilio_"));
+    console.log("🛵 Claves domicilio (orderInfo):", domicilioKeys);
     domicilioKeys.forEach((key) => {
+      if (!state.orders[key]) state.orders[key] = [];
+      if (!state.sentPedidos[key]) state.sentPedidos[key] = [];
+
       const owed = sentTotal(key) + orderTotal(state.orders[key]);
-      if (state.orders[key].length === 0 && sentTotal(key) === 0) return;
       const info = state.orderInfo[key] || {};
       const label = info.nombre ? info.nombre : ("DOM " + key.replace("domicilio_", ""));
       const btn = document.createElement("button");
@@ -470,9 +485,11 @@
   function crearPedidoParaLlevar() {
     state.takeoutCounter++;
     const key = `llevar_${state.takeoutCounter}`;
+    // Asegurar que existan las estructuras
     state.orders[key] = [];
     state.sentPedidos[key] = [];
     state.orderInfo[key] = { nombre: `LLEVAR ${state.takeoutCounter}`, direccion: "Para llevar", telefono: "", observaciones: "" };
+    console.log("✅ Creado pedido para llevar:", key, state.orderInfo[key]);
     closeModal(el.screenOrderType);
     closeModal(el.screenSelectTable);
     guardarCarritoRemoto(key, []);
@@ -697,7 +714,7 @@
     el.orderTotal.textContent = formatCOP(owed);
     el.btnCharge.disabled = owed <= 0;
 
-    // 🔥 BOTÓN ELIMINAR (solo para llevar o domicilio)
+    // Botón eliminar para pedidos dinámicos
     const isDynamic = key.startsWith("llevar_") || key.startsWith("domicilio_");
     let btnEliminar = document.getElementById("btnEliminarPedido");
     if (!btnEliminar) {
@@ -706,7 +723,7 @@
       btnEliminar.style.cssText = "width:100%; padding:14px; border-radius:18px; background:#E64A3B; color:white; font-weight:800; font-size:16px; margin-top:8px; border:none; cursor:pointer;";
       el.orderFooter.appendChild(btnEliminar);
     }
-    if (isDynamic && (currentOwed() > 0 || state.orders[key].length > 0 || sentTotal(key) > 0)) {
+    if (isDynamic) {
       btnEliminar.style.display = "block";
       btnEliminar.textContent = "🗑️ Eliminar pedido";
       btnEliminar.onclick = () => eliminarPedidoCompleto(key);
