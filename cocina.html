@@ -23,6 +23,7 @@
     --blue-deep: #1E52B8;
     --purple: #7B2FBE;
     --purple-deep: #5B1F8E;
+    --red: #E64A3B;
     --radius-lg: 26px;
     --radius-md: 18px;
     --shadow-card: 0 6px 18px rgba(26, 21, 18, 0.08);
@@ -164,7 +165,7 @@
 
   .order-card.tipo-mesa { border-color: var(--yellow); }
   .order-card.tipo-domicilio { border-color: var(--green); }
-  .order-card.tipo-llevar { border-color: var(--purple); } /* 🔥 NUEVO: color para llevar */
+  .order-card.tipo-llevar { border-color: var(--purple); }
 
   .card-head {
     padding: 12px 16px;
@@ -177,7 +178,7 @@
   }
   .tipo-mesa .card-head { background: rgba(255, 199, 44, 0.2); color: #8A6400; }
   .tipo-domicilio .card-head { background: rgba(31, 174, 92, 0.16); color: var(--green-deep); }
-  .tipo-llevar .card-head { background: rgba(123, 47, 190, 0.16); color: var(--purple-deep); } /* 🔥 color para llevar */
+  .tipo-llevar .card-head { background: rgba(123, 47, 190, 0.16); color: var(--purple-deep); }
 
   .card-time { font-size: 11px; font-weight: 700; opacity: 0.75; white-space: nowrap; text-align: right; }
 
@@ -292,7 +293,6 @@
       <div class="col-body" id="colEntregados">
         <div class="col-empty">No hay pedidos entregados</div>
       </div>
-      <!-- Footer con solo el botón "Reiniciar día" -->
       <div class="col-footer">
         <button id="btnLimpiarDia" style="background: #E64A3B; color: white; border: none; padding: 8px 14px; border-radius: 10px; font-weight: 800; font-size: 12px; cursor: pointer;">🗑️ Reiniciar día</button>
       </div>
@@ -309,6 +309,7 @@
     escucharEntregados,
     marcarPreparado,
     marcarEntregado,
+    eliminarPedido  // 🔥 Importamos eliminarPedido
   } from "./firebase.js";
 
   const colPendientes = document.getElementById("colPendientes");
@@ -390,26 +391,17 @@
   }
 
   function buildCard(pedido, estado) {
-    // 🔥 DETECTAR TIPO DE PEDIDO
     const esDomicilio = pedido.tipoPedido === "domicilio";
     const esParaLlevar = pedido.tipoPedido === "paraLlevar";
     const esMesa = !esDomicilio && !esParaLlevar;
 
-    // 🔥 ASIGNAR CLASE CSS
     let tipoClase = "tipo-mesa";
-    let tipoColor = "var(--yellow)";
-    if (esDomicilio) {
-      tipoClase = "tipo-domicilio";
-      tipoColor = "var(--green)";
-    } else if (esParaLlevar) {
-      tipoClase = "tipo-llevar";
-      tipoColor = "var(--purple)";
-    }
+    if (esDomicilio) tipoClase = "tipo-domicilio";
+    else if (esParaLlevar) tipoClase = "tipo-llevar";
 
     const wrap = document.createElement("div");
     wrap.className = "order-card " + tipoClase;
 
-    // 🔥 TÍTULO SEGÚN TIPO
     let titulo = "";
     if (esParaLlevar) {
       titulo = `📦 LLEVAR ${escapeHtml(pedido.nombreCliente || "")}`;
@@ -419,7 +411,6 @@
       titulo = `🍽️ Mesa ${escapeHtml(pedido.mesa)}`;
     }
 
-    // 🔥 CLIENTE (para domicilio y para llevar)
     let clienteHtml = "";
     if (esDomicilio || esParaLlevar) {
       clienteHtml = `<div class="card-client">
@@ -439,6 +430,17 @@
       ? `<div class="card-obs">📝 ${escapeHtml(pedido.observaciones)}</div>`
       : "";
 
+    // 🔥 FOOTER CON BOTÓN ELIMINAR PARA ENTREGADOS
+    let footHTML = `<span class="card-total">${formatCOP(pedido.total)}</span>`;
+    if (estado === "pendiente") {
+      footHTML += `<button class="btn-ready">✅ Preparado</button>`;
+    } else if (estado === "listo") {
+      footHTML += `<button class="btn-delivered">✔ Entregado</button>`;
+    } else {
+      footHTML += `<span class="sold-label">✔ Entregado${pedido.pagado ? " · Pagado" : ""}</span>`;
+      footHTML += `<button class="btn-delete-delivered" style="background:#FCE9E6; color:var(--red); border:none; padding:6px 10px; border-radius:8px; font-weight:700; cursor:pointer; font-size:13px; margin-left:8px;" title="Eliminar de entregados">🗑️</button>`;
+    }
+
     wrap.innerHTML = `
       <div class="card-head">
         <span>${titulo}</span>
@@ -450,12 +452,7 @@
         ${obsHtml}
       </div>
       <div class="card-foot">
-        <span class="card-total">${formatCOP(pedido.total)}</span>
-        ${estado === "pendiente"
-          ? `<button class="btn-ready">✅ Preparado</button>`
-          : estado === "listo"
-          ? `<button class="btn-delivered">✔ Entregado</button>`
-          : `<span class="sold-label">✔ Entregado${pedido.pagado ? " · Pagado" : ""}</span>`}
+        ${footHTML}
       </div>
     `;
 
@@ -467,6 +464,22 @@
       wrap.querySelector(".btn-delivered").addEventListener("click", () => {
         marcarEntregado(pedido.id).catch((e) => console.error(e));
       });
+    } else if (estado === "entregado") {
+      // 🔥 EVENTO PARA ELIMINAR ENTREGADO
+      const btnDelete = wrap.querySelector(".btn-delete-delivered");
+      if (btnDelete) {
+        btnDelete.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (!confirm(`¿Eliminar este pedido entregado?`)) return;
+          try {
+            await eliminarPedido(pedido.id);
+            // El listener de entregados actualizará la lista automáticamente
+          } catch (err) {
+            console.error("Error eliminando pedido:", err);
+            alert("No se pudo eliminar el pedido");
+          }
+        });
+      }
     }
 
     return wrap;
