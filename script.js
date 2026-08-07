@@ -1,13 +1,13 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con eliminación definitiva del carrito al cobrar)
+   script.js (con filtro de pedidos pagados y logs)
    ========================================================= */
 
 (function () {
   "use strict";
 
   /* ---------------------------------------------------------
-     DATOS DEL MENÚ
+     DATOS DEL MENÚ (sin cambios)
   --------------------------------------------------------- */
   const CATEGORIES = ["Maduros", "Tostones", "Bowls", "Sodas Italianas", "Jugos Naturales", "Otras Bebidas"];
 
@@ -79,6 +79,7 @@
   let carritoUnsubscribe = null;
   let pedidosUnsubscribe = null;
 
+  // Variables para reconstrucción de sentPedidos
   let lastPendientes = [];
   let lastListos = [];
   let lastEntregados = [];
@@ -239,7 +240,7 @@
   };
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DEL CARRITO (Firestore)
+     SINCRONIZACIÓN DEL CARRITO
   --------------------------------------------------------- */
   function suscribirCarrito(key) {
     if (carritoUnsubscribe) {
@@ -255,7 +256,6 @@
     console.log(`🔔 Suscribiendo a carrito: ${key}`);
     carritoUnsubscribe = window.PedidosCocina.escucharCarrito(key, (items) => {
       console.log(`📥 Carrito RECIBIDO para ${key}:`, JSON.stringify(items));
-      // 🔥 Verificación: si el carrito está vacío y la mesa está pagada, no actualizar
       const currentItems = state.orders[key] || [];
       if (JSON.stringify(currentItems) !== JSON.stringify(items)) {
         console.log(`🔄 Actualizando carrito de ${key} (cambiaron los datos)`);
@@ -299,21 +299,29 @@
   }
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DE PEDIDOS EN COCINA (Firestore)
+     SINCRONIZACIÓN DE PEDIDOS EN COCINA (CORREGIDO)
   --------------------------------------------------------- */
   function reconstruirSentPedidos() {
+    // Combinar todos los pedidos de los tres estados
     const todos = [...lastPendientes, ...lastListos, ...lastEntregados];
-    console.log("🔄 Reconstruyendo sentPedidos con", todos.length, "pedidos");
+    console.log("🔄 Reconstruyendo sentPedidos con", todos.length, "pedidos (sin pagados)");
 
+    // Limpiar todos los sentPedidos actuales
     const keys = Object.keys(state.sentPedidos);
     keys.forEach(k => {
       state.sentPedidos[k] = [];
     });
 
-    todos.forEach(p => {
+    // 🔥 FILTRAR: Solo incluir pedidos que NO estén pagados
+    const noPagados = todos.filter(p => p.pagado !== true);
+    console.log(`📌 Filtrando pagados: quedan ${noPagados.length} pedidos no pagados`);
+
+    noPagados.forEach(p => {
       let key = null;
+      // Prioridad: usar la clave guardada en el documento
       if (p.clave) {
         key = p.clave;
+        console.log(`📌 Usando clave guardada: ${key} para pedido ${p.id}`);
       } else if (p.tipoPedido === 'mesa' && p.mesa) {
         key = `mesa_${p.mesa}`;
       } else if (p.tipoPedido === 'domicilio' && p.nombreCliente) {
@@ -333,16 +341,26 @@
       }
 
       if (key && state.sentPedidos[key]) {
-        state.sentPedidos[key].push({
-          id: p.id,
-          total: p.total,
-          productos: p.productos,
-          estado: p.estado || 'pendiente',
-          hora: p.hora
-        });
+        // Verificar si ya existe para evitar duplicados
+        const exists = state.sentPedidos[key].some(sp => sp.id === p.id);
+        if (!exists) {
+          state.sentPedidos[key].push({
+            id: p.id,
+            total: p.total,
+            productos: p.productos,
+            estado: p.estado || 'pendiente',
+            hora: p.hora
+          });
+          console.log(`✅ Asignado pedido ${p.id} (${p.estado}) a ${key}`);
+        } else {
+          console.log(`⚠️ Pedido ${p.id} ya existe en ${key}`);
+        }
+      } else {
+        console.warn(`⚠️ No se encontró clave para pedido:`, p);
       }
     });
 
+    // Ordenar por hora
     keys.forEach(k => {
       state.sentPedidos[k].sort((a, b) => {
         const ta = a.hora && a.hora.toMillis ? a.hora.toMillis() : 0;
@@ -367,13 +385,13 @@
     }
 
     const pendientesUnsub = window.PedidosCocina.escucharPendientes((pedidos) => {
-      console.log("📥 Pedidos pendientes recibidos:", pedidos.length);
+      console.log("📥 Pedidos pendientes recibidos (no pagados):", pedidos.length);
       lastPendientes = pedidos;
       reconstruirSentPedidos();
     }, (err) => console.error("Error pendientes:", err));
 
     const listosUnsub = window.PedidosCocina.escucharListos((pedidos) => {
-      console.log("📥 Pedidos listos recibidos:", pedidos.length);
+      console.log("📥 Pedidos listos recibidos (no pagados):", pedidos.length);
       lastListos = pedidos;
       reconstruirSentPedidos();
     }, (err) => console.error("Error listos:", err));
@@ -552,16 +570,12 @@
   --------------------------------------------------------- */
   async function addProductToOrder(product) {
     const order = currentOrder();
-    console.log("📦 ANTES de agregar:", JSON.stringify(order));
-    
     let item = order.find((it) => it.productId === product.id && (!it.exceptions || it.exceptions.length === 0));
     if (item) {
       item.qty += 1;
     } else {
       order.push({ id: uid(), productId: product.id, name: product.name, price: product.price, qty: 1, exceptions: [] });
     }
-    
-    console.log("📦 DESPUÉS de agregar:", JSON.stringify(order));
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
     renderProducts();
@@ -577,7 +591,6 @@
       removeItem(itemId);
       return;
     }
-    console.log(`🔄 Cambiando cantidad de ${item.name} a ${item.qty}`);
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
     renderProducts();
@@ -588,8 +601,6 @@
     const order = currentOrder();
     const idx = order.findIndex((it) => it.id === itemId);
     if (idx === -1) return;
-    const item = order[idx];
-    console.log(`🗑️ Eliminando ${item.name} del carrito`);
     order.splice(idx, 1);
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
@@ -800,25 +811,22 @@
     }
   }
 
-  // 🔥 FINALIZAR PAGO CON ELIMINACIÓN DEFINITIVA DEL CARRITO
   async function finalizarPago() {
     try {
-      // 1. Eliminar carrito remoto de la clave que se pagó (¡IMPORTANTE!)
+      // 1. Eliminar carrito remoto
       await eliminarCarritoRemoto(pagoKey);
       
-      // 2. Limpiar carrito local y pedidos en cocina de esa clave
+      // 2. Limpiar local
       state.orders[pagoKey] = [];
       state.sentPedidos[pagoKey] = [];
       
-      // 3. Si la clave era dinámica (domicilio o llevar), eliminarla también del state.orders y orderInfo
+      // 3. Si es dinámico, eliminarlo
       if (pagoKey.startsWith("domicilio_") || pagoKey.startsWith("llevar_")) {
         delete state.orders[pagoKey];
         delete state.sentPedidos[pagoKey];
         delete state.orderInfo[pagoKey];
-        // Cambiar a mesa_1
         state.currentKey = "mesa_1";
       } else {
-        // Era una mesa fija: la dejamos vacía pero nos aseguramos de que currentKey sea esa misma mesa
         state.currentKey = pagoKey;
         state.orders[pagoKey] = [];
         state.sentPedidos[pagoKey] = [];
@@ -826,25 +834,19 @@
 
       saveState();
 
-      // 🔥 Forzamos la cancelación del listener actual y nos volvemos a suscribir a la nueva clave
+      // 4. Cancelar listener y volver a suscribir
       if (carritoUnsubscribe) {
         carritoUnsubscribe();
         carritoUnsubscribe = null;
       }
-      // Si la clave es dinámica y fue eliminada, el documento ya no existe, pero el listener se suscribirá y devolverá vacío
       suscribirCarrito(state.currentKey);
 
-      // Cerrar modal
       closeModal(el.modalPayment);
-
-      // Renderizar UI
       renderTables();
       renderProducts();
       renderOrder();
 
       showToast("✅ Pago completado");
-
-      // Recargar ventas
       setTimeout(cargarVentasDirectas, 500);
 
     } catch (err) {
