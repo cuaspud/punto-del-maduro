@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   firebase.js (corregido: sin serverTimestamp en arrays)
+   firebase.js (con corrección en pagos y estado)
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -42,7 +42,7 @@ const pedidosRef = collection(db, PEDIDOS_COL);
 const carritosRef = collection(db, CARRITOS_COL);
 
 /* ---------------------------------------------------------
-   CARRITOS (SINCRONIZACIÓN EN TIEMPO REAL)
+   CARRITOS
 --------------------------------------------------------- */
 export async function guardarCarrito(key, items) {
   const ref = doc(db, CARRITOS_COL, key);
@@ -91,13 +91,19 @@ export async function enviarPedido(pedido) {
 }
 
 /* ---------------------------------------------------------
-   ESCUCHAR EN TIEMPO REAL (pedidos de cocina)
+   ESCUCHAR PEDIDOS (solo estado pendiente, listo, entregado)
 --------------------------------------------------------- */
 export function escucharPendientes(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "pendiente"), orderBy("hora", "asc"));
   return onSnapshot(q, (snap) => {
     const pedidos = [];
-    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    snap.forEach((d) => {
+      const data = d.data();
+      // Solo incluir si NO está pagado (por si acaso)
+      if (!data.pagado) {
+        pedidos.push({ id: d.id, ...data });
+      }
+    });
     callback(pedidos);
   }, onError);
 }
@@ -106,7 +112,12 @@ export function escucharListos(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "listo"), orderBy("hora", "asc"));
   return onSnapshot(q, (snap) => {
     const pedidos = [];
-    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    snap.forEach((d) => {
+      const data = d.data();
+      if (!data.pagado) {
+        pedidos.push({ id: d.id, ...data });
+      }
+    });
     callback(pedidos);
   }, onError);
 }
@@ -115,7 +126,11 @@ export function escucharEntregados(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "entregado"), orderBy("hora", "asc"));
   return onSnapshot(q, (snap) => {
     const pedidos = [];
-    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    snap.forEach((d) => {
+      const data = d.data();
+      // Incluir entregados aunque estén pagados (para historial)
+      pedidos.push({ id: d.id, ...data });
+    });
     callback(pedidos);
   }, onError);
 }
@@ -166,7 +181,7 @@ export function eliminarPedido(id) {
 }
 
 /* ---------------------------------------------------------
-   PAGOS PARCIALES (CORREGIDO: sin serverTimestamp en arrays)
+   PAGOS PARCIALES (CORREGIDO)
 --------------------------------------------------------- */
 export async function registrarPagoParcial(id, metodo, monto) {
   if (!id || !metodo || monto <= 0) return;
@@ -178,11 +193,10 @@ export async function registrarPagoParcial(id, metodo, monto) {
   const total = data.total || 0;
   const pagos = data.pagos || [];
 
-  // Usamos Date.now() en lugar de serverTimestamp() para evitar error en arrays
   const nuevoPago = {
     metodo,
     monto,
-    horaPago: new Date().toISOString() // timestamp como string
+    horaPago: new Date().toISOString()
   };
   pagos.push(nuevoPago);
 
@@ -192,23 +206,53 @@ export async function registrarPagoParcial(id, metodo, monto) {
   await updateDoc(docRef, {
     pagos: pagos,
     pagado: pagado,
-    horaPago: serverTimestamp() // este sí puede ir fuera del array
+    // Si está pagado, cambiamos estado a entregado
+    estado: pagado ? "entregado" : data.estado,
+    horaPago: serverTimestamp()
   });
 
   return { pagos, pagado, totalPagado };
 }
 
+/* ---------------------------------------------------------
+   COBRAR (para pagos completos o legacy)
+--------------------------------------------------------- */
+export async function cobrarPedidos(ids, metodoPago) {
+  if (!ids || ids.length === 0) return;
+  const batch = writeBatch(db);
+  ids.forEach((id) => {
+    if (id) {
+      batch.update(doc(db, PEDIDOS_COL, id), {
+        pagado: true,
+        metodoPago,
+        pagos: [{ metodo: metodoPago, monto: 0, horaPago: new Date().toISOString() }],
+        estado: "entregado",
+        horaPago: serverTimestamp(),
+      });
+    }
+  });
+  return batch.commit();
+}
+
+/* ---------------------------------------------------------
+   ESCUCHAR LISTOS PARA MESERO
+--------------------------------------------------------- */
 export function escucharListosParaMesero(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "listo"));
   return onSnapshot(q, (snap) => {
     const pedidos = [];
-    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    snap.forEach((d) => {
+      const data = d.data();
+      if (!data.pagado) {
+        pedidos.push({ id: d.id, ...data });
+      }
+    });
     callback(pedidos);
   }, onError);
 }
 
 /* ---------------------------------------------------------
-   PUENTE PARA script.js
+   PUENTE
 --------------------------------------------------------- */
 window.PedidosCocina = {
   enviarPedido,
@@ -225,4 +269,5 @@ window.PedidosCocina = {
   obtenerCarrito,
   escucharCarrito,
   eliminarCarrito,
+  cobrarPedidos,
 };
