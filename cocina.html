@@ -136,12 +136,9 @@
     padding: 14px 22px;
     border-top: 2px solid var(--gray-line);
     background: rgba(31, 174, 92, 0.08);
-    color: var(--green-deep);
-    font-weight: 800;
-    font-size: 14px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
   }
 
   .order-card {
@@ -289,13 +286,9 @@
       <div class="col-body" id="colEntregados">
         <div class="col-empty">No hay pedidos entregados</div>
       </div>
-      <!-- 🔥 FOOTER RESTAURADO: Total vendido hoy + Botón Reiniciar día (archiva) -->
+      <!-- Footer con solo el botón "Reiniciar día" -->
       <div class="col-footer">
-        <span>Total vendido hoy</span>
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <span id="totalVendidoHoy">$0</span>
-          <button id="btnLimpiarDia" style="background: #E64A3B; color: white; border: none; padding: 8px 14px; border-radius: 10px; font-weight: 800; font-size: 12px; cursor: pointer;">🗑️ Reiniciar día</button>
-        </div>
+        <button id="btnLimpiarDia" style="background: #E64A3B; color: white; border: none; padding: 8px 14px; border-radius: 10px; font-weight: 800; font-size: 12px; cursor: pointer;">🗑️ Reiniciar día</button>
       </div>
     </section>
   </main>
@@ -318,7 +311,6 @@
   const countPendientes = document.getElementById("countPendientes");
   const countListos = document.getElementById("countListos");
   const countEntregados = document.getElementById("countEntregados");
-  const totalVendidoHoy = document.getElementById("totalVendidoHoy");
   const connStatus = document.getElementById("connStatus");
   const unlockAudio = document.getElementById("unlockAudio");
 
@@ -506,8 +498,7 @@
   function renderEntregadosHoy() {
     const deHoy = lastEntregadosRaw.filter(esHoy);
     render(colEntregados, countEntregados, deHoy, "entregado", "No hay pedidos entregados");
-    const total = deHoy.reduce((s, p) => s + (p.total || 0), 0);
-    totalVendidoHoy.textContent = formatCOP(total);
+    // Ya no actualizamos totalVendidoHoy porque lo eliminamos
   }
 
   escucharEntregados((pedidos) => {
