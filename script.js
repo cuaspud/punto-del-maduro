@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con edición y borrado de pedidos en cocina)
+   script.js (versión corregida sin errores)
    ========================================================= */
 
 (function () {
@@ -465,7 +465,7 @@
     const sp = (state.sentPedidos[key] || [])[index];
     if (!sp) return;
 
-    // 1. Borrar de Firebase
+    // 1. Eliminar documento en Firebase
     if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
       try {
         await window.PedidosCocina.eliminarPedido(sp.id);
@@ -476,16 +476,15 @@
 
     // 2. Devolver productos a la orden activa de la mesa
     if (sp.productos && Array.isArray(sp.productos)) {
-      sp.productos.forEach(p => {
-        // Encontrar el ID del producto si existe
-        const prodOrig = PRODUCTS.find(prod => prod.name === p.nombre);
+      sp.productos.forEach((p) => {
+        const prodOrig = PRODUCTS.find((prod) => prod.name === p.nombre);
         state.orders[key].push({
           id: uid(),
           productId: prodOrig ? prodOrig.id : "custom",
           name: p.nombre,
           price: p.precio,
           qty: p.cantidad,
-          exceptions: p.excepciones || []
+          exceptions: p.excepciones || [],
         });
       });
     }
@@ -496,7 +495,7 @@
     renderTables();
     renderProducts();
     renderOrder();
-    showToast("Pedido devuelto a la mesa. Puedes modificarlo y volverlo a enviar.");
+    showToast("Pedido devuelto a la mesa. Puedes modificarlo.");
   }
 
   async function borrarPedidoEnviado(key, index) {
@@ -623,6 +622,9 @@
 
     el.btnConfirmPay.disabled = true;
     try {
+      const idsPorCobrar = (state.sentPedidos[key] || []).map((p) => p.id);
+
+      // Si hay ítems extra en borrador que no se enviaron a cocina, se crean ya entregados
       if (order.length > 0) {
         const productos = order.map((it) => ({
           nombre: it.name,
@@ -642,11 +644,9 @@
           estado: "entregado",
         };
         const ref = await window.PedidosCocina.enviarPedido(pedidoExtra);
-        state.sentPedidos[key] = state.sentPedidos[key] || [];
-        state.sentPedidos[key].push({ id: ref.id, total: pedidoExtra.total, productos: productos });
-        await window.PedidosCocina.cobrarPedidos([ref.id], metodo);
+        idsPorCobrar.push(ref.id);
       }
-      const idsPorCobrar = (state.sentPedidos[key] || []).map((p) => p.id);
+
       if (idsPorCobrar.length > 0) {
         await window.PedidosCocina.cobrarPedidos(idsPorCobrar, metodo);
       }
@@ -677,7 +677,7 @@
       setTimeout(() => cargarVentasDirectas(), 500);
     } catch (err) {
       console.error("❌ Error al registrar el pago:", err);
-      showToast("No se pudo registrar el pago. Revisa la consola (F12) para más detalles.");
+      showToast("No se pudo registrar el pago. Revisa la consola.");
     } finally {
       el.btnConfirmPay.disabled = false;
     }
@@ -736,7 +736,7 @@
   }
 
   /* ---------------------------------------------------------
-     VENTAS — CARGA DIRECTA DESDE FIRESTORE
+     VENTAS — CARGA Y RENDERIZADO
   --------------------------------------------------------- */
   function fechaDeHora(hora) {
     if (!hora || typeof hora.toDate !== "function") return new Date();
@@ -754,6 +754,7 @@
 
   async function cargarVentasDirectas() {
     try {
+      if (!window.firebaseApp) return [];
       const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
       const db = getFirestore(window.firebaseApp);
       const querySnapshot = await getDocs(collection(db, "pedidosCocina"));
@@ -774,7 +775,9 @@
       return ventas;
     } catch (error) {
       console.error("❌ Error cargando ventas:", error);
-      el.ventasList.innerHTML = `<div class="ventas-empty">⚠ Error al cargar ventas: ${error.message}</div>`;
+      if (el.ventasList) {
+        el.ventasList.innerHTML = `<div class="ventas-empty">⚠ Error al cargar ventas</div>`;
+      }
       return [];
     }
   }
@@ -920,7 +923,6 @@
   });
 
   el.btnVentas.addEventListener("click", async () => {
-    let ventasSelection = { type: "day", key: dayKeyOf(new Date()) };
     const ventas = await cargarVentasDirectas();
     renderVentasDaysPanel(ventas);
     openModal(el.screenVentas);
@@ -945,7 +947,7 @@
   });
 
   /* ---------------------------------------------------------
-     INIT
+     INIT CON ESCUCHADORES EN TIEMPO REAL
   --------------------------------------------------------- */
   function init() {
     loadState();
@@ -958,11 +960,16 @@
     let intentos = 0;
     const maxIntentos = 20;
     function iniciarListeners() {
-      if (window.PedidosCocina && typeof window.PedidosCocina.escucharVentasHoy === 'function') {
-        if (window.PedidosCocina && typeof window.PedidosCocina.escucharEntregados === 'function') {
-          window.PedidosCocina.escucharEntregados((pedidos) => {
-            renderEntregados(pedidos);
-          }, (err) => console.error("Error entregados:", err));
+      if (window.PedidosCocina && typeof window.PedidosCocina.escucharEntregados === 'function') {
+        window.PedidosCocina.escucharEntregados((pedidos) => {
+          renderEntregados(pedidos);
+        }, (err) => console.error("Error entregados:", err));
+
+        if (typeof window.PedidosCocina.escucharVentasHoy === 'function') {
+          window.PedidosCocina.escucharVentasHoy((ventas) => {
+            renderVentas(ventas);
+            renderVentasDaysPanel(ventas);
+          }, (err) => console.error("Error ventas:", err));
         }
       } else {
         intentos++;
