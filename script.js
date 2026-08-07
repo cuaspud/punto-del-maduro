@@ -1,13 +1,13 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con filtro de pedidos pagados y logs)
+   script.js (corregido: pedidos pagados no reaparecen)
    ========================================================= */
 
 (function () {
   "use strict";
 
   /* ---------------------------------------------------------
-     DATOS DEL MENÚ (sin cambios)
+     DATOS DEL MENÚ
   --------------------------------------------------------- */
   const CATEGORIES = ["Maduros", "Tostones", "Bowls", "Sodas Italianas", "Jugos Naturales", "Otras Bebidas"];
 
@@ -240,7 +240,7 @@
   };
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DEL CARRITO
+     SINCRONIZACIÓN DEL CARRITO (Firestore)
   --------------------------------------------------------- */
   function suscribirCarrito(key) {
     if (carritoUnsubscribe) {
@@ -299,29 +299,27 @@
   }
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DE PEDIDOS EN COCINA (CORREGIDO)
+     SINCRONIZACIÓN DE PEDIDOS EN COCINA (CORREGIDA)
   --------------------------------------------------------- */
   function reconstruirSentPedidos() {
-    // Combinar todos los pedidos de los tres estados
-    const todos = [...lastPendientes, ...lastListos, ...lastEntregados];
-    console.log("🔄 Reconstruyendo sentPedidos con", todos.length, "pedidos (sin pagados)");
+    // Solo usar pendientes y listos (excluir entregados y pagados)
+    const activos = [...lastPendientes, ...lastListos];
+    console.log("🔄 Reconstruyendo sentPedidos con", activos.length, "pedidos activos");
 
-    // Limpiar todos los sentPedidos actuales
+    // Limpiar todos los sentPedidos
     const keys = Object.keys(state.sentPedidos);
     keys.forEach(k => {
       state.sentPedidos[k] = [];
     });
 
-    // 🔥 FILTRAR: Solo incluir pedidos que NO estén pagados
-    const noPagados = todos.filter(p => p.pagado !== true);
-    console.log(`📌 Filtrando pagados: quedan ${noPagados.length} pedidos no pagados`);
+    // Agrupar solo pedidos NO pagados (pendientes o listos)
+    activos.forEach(p => {
+      // 🔥 FILTRO CLAVE: saltar si ya está pagado
+      if (p.pagado === true) return;
 
-    noPagados.forEach(p => {
       let key = null;
-      // Prioridad: usar la clave guardada en el documento
       if (p.clave) {
         key = p.clave;
-        console.log(`📌 Usando clave guardada: ${key} para pedido ${p.id}`);
       } else if (p.tipoPedido === 'mesa' && p.mesa) {
         key = `mesa_${p.mesa}`;
       } else if (p.tipoPedido === 'domicilio' && p.nombreCliente) {
@@ -341,26 +339,17 @@
       }
 
       if (key && state.sentPedidos[key]) {
-        // Verificar si ya existe para evitar duplicados
-        const exists = state.sentPedidos[key].some(sp => sp.id === p.id);
-        if (!exists) {
-          state.sentPedidos[key].push({
-            id: p.id,
-            total: p.total,
-            productos: p.productos,
-            estado: p.estado || 'pendiente',
-            hora: p.hora
-          });
-          console.log(`✅ Asignado pedido ${p.id} (${p.estado}) a ${key}`);
-        } else {
-          console.log(`⚠️ Pedido ${p.id} ya existe en ${key}`);
-        }
-      } else {
-        console.warn(`⚠️ No se encontró clave para pedido:`, p);
+        state.sentPedidos[key].push({
+          id: p.id,
+          total: p.total,
+          productos: p.productos,
+          estado: p.estado || 'pendiente',
+          hora: p.hora,
+          pagado: p.pagado || false
+        });
       }
     });
 
-    // Ordenar por hora
     keys.forEach(k => {
       state.sentPedidos[k].sort((a, b) => {
         const ta = a.hora && a.hora.toMillis ? a.hora.toMillis() : 0;
@@ -385,21 +374,22 @@
     }
 
     const pendientesUnsub = window.PedidosCocina.escucharPendientes((pedidos) => {
-      console.log("📥 Pedidos pendientes recibidos (no pagados):", pedidos.length);
+      console.log("📥 Pedidos pendientes recibidos:", pedidos.length);
       lastPendientes = pedidos;
       reconstruirSentPedidos();
     }, (err) => console.error("Error pendientes:", err));
 
     const listosUnsub = window.PedidosCocina.escucharListos((pedidos) => {
-      console.log("📥 Pedidos listos recibidos (no pagados):", pedidos.length);
+      console.log("📥 Pedidos listos recibidos:", pedidos.length);
       lastListos = pedidos;
       reconstruirSentPedidos();
     }, (err) => console.error("Error listos:", err));
 
+    // 🔥 Entregados SOLO para historial, NO para reconstruir sentPedidos
     const entregadosUnsub = window.PedidosCocina.escucharEntregados((pedidos) => {
       console.log("📥 Pedidos entregados recibidos:", pedidos.length);
       lastEntregados = pedidos;
-      reconstruirSentPedidos();
+      renderEntregados(pedidos); // Solo actualizar historial
     }, (err) => console.error("Error entregados:", err));
 
     pedidosUnsubscribe = () => {
@@ -570,12 +560,16 @@
   --------------------------------------------------------- */
   async function addProductToOrder(product) {
     const order = currentOrder();
+    console.log("📦 ANTES de agregar:", JSON.stringify(order));
+    
     let item = order.find((it) => it.productId === product.id && (!it.exceptions || it.exceptions.length === 0));
     if (item) {
       item.qty += 1;
     } else {
       order.push({ id: uid(), productId: product.id, name: product.name, price: product.price, qty: 1, exceptions: [] });
     }
+    
+    console.log("📦 DESPUÉS de agregar:", JSON.stringify(order));
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
     renderProducts();
@@ -591,6 +585,7 @@
       removeItem(itemId);
       return;
     }
+    console.log(`🔄 Cambiando cantidad de ${item.name} a ${item.qty}`);
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
     renderProducts();
@@ -601,6 +596,8 @@
     const order = currentOrder();
     const idx = order.findIndex((it) => it.id === itemId);
     if (idx === -1) return;
+    const item = order[idx];
+    console.log(`🗑️ Eliminando ${item.name} del carrito`);
     order.splice(idx, 1);
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
@@ -813,14 +810,11 @@
 
   async function finalizarPago() {
     try {
-      // 1. Eliminar carrito remoto
       await eliminarCarritoRemoto(pagoKey);
       
-      // 2. Limpiar local
       state.orders[pagoKey] = [];
       state.sentPedidos[pagoKey] = [];
       
-      // 3. Si es dinámico, eliminarlo
       if (pagoKey.startsWith("domicilio_") || pagoKey.startsWith("llevar_")) {
         delete state.orders[pagoKey];
         delete state.sentPedidos[pagoKey];
@@ -834,7 +828,6 @@
 
       saveState();
 
-      // 4. Cancelar listener y volver a suscribir
       if (carritoUnsubscribe) {
         carritoUnsubscribe();
         carritoUnsubscribe = null;
@@ -842,11 +835,13 @@
       suscribirCarrito(state.currentKey);
 
       closeModal(el.modalPayment);
+
       renderTables();
       renderProducts();
       renderOrder();
 
       showToast("✅ Pago completado");
+
       setTimeout(cargarVentasDirectas, 500);
 
     } catch (err) {
