@@ -2,16 +2,6 @@
    EL PUNTO DEL MADURO — POS
    firebase.js
    Conexión con Firebase Firestore (tiempo real).
-
-   ⚠️ IMPORTANTE:
-   Reemplaza los valores de "firebaseConfig" por los de TU
-   proyecto en https://console.firebase.google.com
-   (Configuración del proyecto → Tus apps → SDK de Firebase).
-
-   Este archivo es el ÚNICO lugar del proyecto que conoce
-   Firebase. index.html/script.js y cocina.html solo usan
-   las funciones que este módulo expone, nunca importan
-   Firebase directamente en script.js.
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -31,7 +21,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 /* ---------------------------------------------------------
-   CONFIGURACIÓN — reemplaza con tus credenciales reales
+   CONFIGURACIÓN — credenciales
 --------------------------------------------------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyCqDEkTFudWGaMu1yjHkvutsHCtrPzyIek",
@@ -45,20 +35,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// Asignación global para compatibilidad con script.js
+window.firebaseApp = app;
+window.db = db;
+
 const PEDIDOS_COL = "pedidosCocina";
 const pedidosRef = collection(db, PEDIDOS_COL);
 
 /* ---------------------------------------------------------
-   ENVIAR PEDIDO (pantalla mesero → cocina)
-   pedido: { tipoPedido, mesa, nombreCliente, direccion,
-             telefono, productos, observaciones, total, estado }
-   La marca de tiempo "hora" se agrega aquí con el reloj
-   del servidor para que sea confiable entre dispositivos.
-
-   "pagado" arranca en false: el pedido NO se borra ni se
-   pierde en ningún momento, solo cambia de estado
-   (pendiente → listo → entregado) y luego se marca como
-   pagado cuando el mesero cobra la mesa/domicilio.
+   ENVIAR PEDIDO
 --------------------------------------------------------- */
 export async function enviarPedido(pedido) {
   return addDoc(pedidosRef, {
@@ -69,7 +54,7 @@ export async function enviarPedido(pedido) {
 }
 
 /* ---------------------------------------------------------
-   ESCUCHAR EN TIEMPO REAL (pantalla cocina)
+   ESCUCHAR EN TIEMPO REAL
 --------------------------------------------------------- */
 export function escucharPendientes(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "pendiente"), orderBy("hora", "asc"));
@@ -103,13 +88,6 @@ export function escucharListos(callback, onError) {
   );
 }
 
-/* ---------------------------------------------------------
-   NUEVO: ENTREGADOS
-   Pedidos que la cocina ya entregó. NO se borran — quedan
-   aquí como el registro de lo que se ha vendido, hasta que
-   se cierre el día. Usa el mismo índice compuesto
-   (estado + hora) que pendientes/listos.
---------------------------------------------------------- */
 export function escucharEntregados(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "entregado"), orderBy("hora", "asc"));
   return onSnapshot(
@@ -126,15 +104,6 @@ export function escucharEntregados(callback, onError) {
   );
 }
 
-/* ---------------------------------------------------------
-   NUEVO: VENTAS (pantalla mesero)
-   Todos los pedidos ya cobrados (pagado == true), sin
-   importar su estado de cocina. El ordenamiento por fecha se
-   hace en el cliente (no con orderBy) para no depender de que
-   exista un índice compuesto en Firestore: así las ventas se
-   reflejan de inmediato apenas se cobra, sin configuración
-   adicional en la consola de Firebase.
---------------------------------------------------------- */
 export function escucharVentasHoy(callback, onError) {
   const q = query(pedidosRef, where("pagado", "==", true));
   return onSnapshot(
@@ -157,7 +126,7 @@ export function escucharVentasHoy(callback, onError) {
 }
 
 /* ---------------------------------------------------------
-   ACCIONES DE COCINA
+   ACCIONES DE COCINA Y EDICIÓN
 --------------------------------------------------------- */
 export function marcarPreparado(id) {
   return updateDoc(doc(db, PEDIDOS_COL, id), { estado: "listo" });
@@ -168,36 +137,33 @@ export function marcarEntregado(id) {
 }
 
 export function eliminarPedido(id) {
+  if (!id) return Promise.resolve();
   return deleteDoc(doc(db, PEDIDOS_COL, id));
 }
 
 /* ---------------------------------------------------------
-   NUEVO: COBRAR (pantalla mesero)
-   Marca en un solo lote todos los pedidos de una mesa o
-   domicilio como pagados. No los borra: quedan disponibles
-   para "Ventas del día" y para el total de ENTREGADOS en
-   cocina. También se fuerza estado: "entregado" al cobrar,
-   para que el pedido aparezca de inmediato en ENTREGADOS
-   (tanto en cocina como en el historial del mesero) sin
-   depender de que alguien lo haya marcado manualmente antes.
+   COBRAR (utiliza merge para tolerancia a fallos)
 --------------------------------------------------------- */
 export async function cobrarPedidos(ids, metodoPago) {
   if (!ids || ids.length === 0) return;
   const batch = writeBatch(db);
   ids.forEach((id) => {
-    batch.update(doc(db, PEDIDOS_COL, id), {
-      pagado: true,
-      metodoPago,
-      estado: "entregado",
-      horaPago: serverTimestamp(),
-    });
+    if (id) {
+      batch.set(
+        doc(db, PEDIDOS_COL, id),
+        {
+          pagado: true,
+          metodoPago,
+          estado: "entregado",
+          horaPago: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
   });
   return batch.commit();
 }
-/* ---------------------------------------------------------
-   NUEVO: EL MESERO ESCUCHA LOS PEDIDOS QUE YA ESTÁN LISTOS
-   (Para que sepa que ya puede cobrar)
---------------------------------------------------------- */
+
 export function escucharListosParaMesero(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "listo"));
   return onSnapshot(
@@ -215,9 +181,7 @@ export function escucharListosParaMesero(callback, onError) {
 }
 
 /* ---------------------------------------------------------
-   PUENTE PARA script.js (que NO es un módulo)
-   script.js solo llama a window.PedidosCocina.enviarPedido(...),
-   sin importar ni conocer Firebase.
+   PUENTE PARA script.js
 --------------------------------------------------------- */
 window.PedidosCocina = {
   enviarPedido,
