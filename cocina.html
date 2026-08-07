@@ -65,20 +65,20 @@
   .kitchen-cols {
     flex: 1;
     display: flex;
-    flex-wrap: nowrap; /* Evita que las columnas se apilen */
+    flex-wrap: nowrap;
     min-height: 0;
     height: 100%;
     overflow: hidden;
   }
 
   .kitchen-col {
-    flex: 1 1 0; /* Tamaño flexible pero equitativo */
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     min-height: 0;
     height: 100%;
     overflow: hidden;
-    min-width: 120px; /* Ancho mínimo para que no se compriman demasiado */
+    min-width: 120px;
   }
   .kitchen-col + .kitchen-col { border-left: 2px solid var(--gray-line); }
 
@@ -112,7 +112,7 @@
   .col-body {
     flex: 1;
     min-height: 0;
-    overflow-y: auto; /* Scroll vertical */
+    overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -248,9 +248,8 @@
     opacity: 0.92;
   }
 
-  /* Ajuste para pantallas pequeñas (tablets) */
   @media (max-width: 900px) {
-    .kitchen-col { min-width: 100px; } /* Mantiene un ancho mínimo */
+    .kitchen-col { min-width: 100px; }
     .col-header { font-size: 14px; padding: 12px 14px; }
     .card-head { font-size: 13px; }
   }
@@ -288,9 +287,10 @@
         📦 ENTREGADOS <span class="col-count"><span id="countEntregados">0</span></span>
       </div>
       <div class="col-body" id="colEntregados">
-        <div class="col-empty">No hay pedidos entregados hoy</div>
+        <div class="col-empty">No hay pedidos entregados</div>
       </div>
-           <div class="col-footer">
+      <!-- 🔥 FOOTER RESTAURADO: Total vendido hoy + Botón Reiniciar día (archiva) -->
+      <div class="col-footer">
         <span>Total vendido hoy</span>
         <div style="display: flex; gap: 12px; align-items: center;">
           <span id="totalVendidoHoy">$0</span>
@@ -505,7 +505,7 @@
 
   function renderEntregadosHoy() {
     const deHoy = lastEntregadosRaw.filter(esHoy);
-    render(colEntregados, countEntregados, deHoy, "entregado", "No hay pedidos entregados hoy");
+    render(colEntregados, countEntregados, deHoy, "entregado", "No hay pedidos entregados");
     const total = deHoy.reduce((s, p) => s + (p.total || 0), 0);
     totalVendidoHoy.textContent = formatCOP(total);
   }
@@ -522,7 +522,7 @@
   }, 30000);
 
   // ------------------------------------------------
-  // BOTÓN: REINICIAR DÍA (ARCHIVAR en lugar de BORRAR)
+  // BOTÓN: REINICIAR DÍA (ARCHIVA en lugar de BORRAR)
   // ------------------------------------------------
   const btnLimpiarDia = document.getElementById("btnLimpiarDia");
 
@@ -550,7 +550,7 @@
       const batch = writeBatch(db);
       pedidosHoy.forEach((p) => {
         const ref = doc(db, "pedidosCocina", p.id);
-        // 🔥 CAMBIO CLAVE: en lugar de delete, actualizamos el estado a "archivado"
+        // 🔥 CLAVE: ARCHIVAMOS (cambiamos estado a "archivado")
         batch.update(ref, { estado: "archivado" });
       });
 
