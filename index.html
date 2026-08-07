@@ -274,13 +274,13 @@
 <div class="toast" id="toast"></div>
 
 <!-- ============================================================
-     ORDEN CORRECTO: PRIMERO FIREBASE, LUEGO SCRIPT.JS
+     SCRIPTS
      ============================================================ -->
 <script type="module" src="firebase.js"></script>
 <script src="script.js"></script>
 
 <script>
-  // CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA (sin conflictos)
+  // CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA
   (function() {
     "use strict";
     let audioCtxMesero = null;
@@ -308,7 +308,6 @@
         nuevosIds.forEach(id => { if (!idsListosConocidos.has(id)) hayNuevo = true; });
         if (hayNuevo) playBeepMesero();
         idsListosConocidos = nuevosIds;
-        // Actualizar colores de mesas (lógica simplificada)
         document.querySelectorAll('.table-btn').forEach(btn => {
           const mesaTexto = btn.textContent.trim();
           const numMesa = mesaTexto.replace('Mesa ', '').replace(/[^0-9]/g, '');
