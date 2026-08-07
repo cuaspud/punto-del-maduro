@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (corregido: pedidos pagados no reaparecen)
+   script.js (corregido: persistencia de pedidos para llevar)
    ========================================================= */
 
 (function () {
@@ -85,16 +85,27 @@
   let lastEntregados = [];
 
   /* ---------------------------------------------------------
-     PERSISTENCIA
+     PERSISTENCIA (guardamos también contadores y claves dinámicas)
   --------------------------------------------------------- */
   function saveState() {
     try {
+      // Guardamos también las claves dinámicas que tienen pedidos en cocina o carrito
+      const dynamicKeys = Object.keys(state.orders).filter(k => k.startsWith("llevar_") || k.startsWith("domicilio_"));
+      const dynamicOrderInfo = {};
+      dynamicKeys.forEach(k => {
+        if (state.orderInfo[k]) {
+          dynamicOrderInfo[k] = state.orderInfo[k];
+        }
+      });
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         currentKey: state.currentKey,
         currentCategory: state.currentCategory,
         orderInfo: state.orderInfo,
         takeoutCounter: state.takeoutCounter,
-        deliveryCounter: state.deliveryCounter
+        deliveryCounter: state.deliveryCounter,
+        // Guardamos las claves dinámicas para que se recuperen al recargar
+        dynamicKeys: dynamicKeys,
+        dynamicOrderInfo: dynamicOrderInfo
       }));
     } catch (e) {
       console.error("No se pudo guardar el estado", e);
@@ -114,6 +125,21 @@
       state.orderInfo = parsed.orderInfo || {};
       state.takeoutCounter = parsed.takeoutCounter || 0;
       state.deliveryCounter = parsed.deliveryCounter || 0;
+
+      // Recuperar claves dinámicas y asegurar que existan en state.orders y state.sentPedidos
+      const dynamicKeys = parsed.dynamicKeys || [];
+      dynamicKeys.forEach(k => {
+        if (!state.orders[k]) {
+          state.orders[k] = [];
+        }
+        if (!state.sentPedidos[k]) {
+          state.sentPedidos[k] = [];
+        }
+        if (parsed.dynamicOrderInfo && parsed.dynamicOrderInfo[k]) {
+          state.orderInfo[k] = parsed.dynamicOrderInfo[k];
+        }
+      });
+      console.log("✅ Claves dinámicas recuperadas:", dynamicKeys);
     } catch (e) {
       console.error("No se pudo cargar el estado", e);
     }
@@ -299,22 +325,18 @@
   }
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DE PEDIDOS EN COCINA (CORREGIDA)
+     SINCRONIZACIÓN DE PEDIDOS EN COCINA
   --------------------------------------------------------- */
   function reconstruirSentPedidos() {
-    // Solo usar pendientes y listos (excluir entregados y pagados)
     const activos = [...lastPendientes, ...lastListos];
     console.log("🔄 Reconstruyendo sentPedidos con", activos.length, "pedidos activos");
 
-    // Limpiar todos los sentPedidos
     const keys = Object.keys(state.sentPedidos);
     keys.forEach(k => {
       state.sentPedidos[k] = [];
     });
 
-    // Agrupar solo pedidos NO pagados (pendientes o listos)
     activos.forEach(p => {
-      // 🔥 FILTRO CLAVE: saltar si ya está pagado
       if (p.pagado === true) return;
 
       let key = null;
@@ -385,11 +407,10 @@
       reconstruirSentPedidos();
     }, (err) => console.error("Error listos:", err));
 
-    // 🔥 Entregados SOLO para historial, NO para reconstruir sentPedidos
     const entregadosUnsub = window.PedidosCocina.escucharEntregados((pedidos) => {
       console.log("📥 Pedidos entregados recibidos:", pedidos.length);
       lastEntregados = pedidos;
-      renderEntregados(pedidos); // Solo actualizar historial
+      renderEntregados(pedidos);
     }, (err) => console.error("Error entregados:", err));
 
     pedidosUnsubscribe = () => {
@@ -404,6 +425,7 @@
   --------------------------------------------------------- */
   function renderTables() {
     el.tablesBar.innerHTML = "";
+    console.log("🔄 Renderizando mesas. Claves actuales:", Object.keys(state.orders));
 
     for (let i = 1; i <= TABLE_COUNT; i++) {
       const key = `mesa_${i}`;
@@ -421,7 +443,10 @@
       el.tablesBar.appendChild(btn);
     }
 
-    Object.keys(state.orders).filter(k => k.startsWith("llevar_")).forEach((key) => {
+    // 🔥 PEDIDOS "PARA LLEVAR" (siempre mostrar los que tienen carrito o pedidos en cocina)
+    const llevarKeys = Object.keys(state.orders).filter(k => k.startsWith("llevar_"));
+    console.log("📦 Claves para llevar:", llevarKeys);
+    llevarKeys.forEach((key) => {
       const info = state.orderInfo[key] || {};
       const label = info.nombre || ("LLEVAR " + key.replace("llevar_", ""));
       const owed = sentTotal(key) + orderTotal(state.orders[key]);
@@ -442,7 +467,10 @@
     btnNuevoLlevar.addEventListener("click", crearPedidoParaLlevar);
     el.tablesBar.appendChild(btnNuevoLlevar);
 
-    Object.keys(state.orders).filter(k => k.startsWith("domicilio_")).forEach((key) => {
+    // 🔥 PEDIDOS "DOMICILIO"
+    const domicilioKeys = Object.keys(state.orders).filter(k => k.startsWith("domicilio_"));
+    console.log("🛵 Claves domicilio:", domicilioKeys);
+    domicilioKeys.forEach((key) => {
       const info = state.orderInfo[key] || {};
       const label = info.nombre ? info.nombre : ("DOM " + key.replace("domicilio_", ""));
       const owed = sentTotal(key) + orderTotal(state.orders[key]);
@@ -487,6 +515,7 @@
     closeModal(el.screenOrderType);
     closeModal(el.screenSelectTable);
     guardarCarritoRemoto(key, []);
+    saveState(); // Guardar la nueva clave dinámica
     switchOrder(key);
     showToast(`📦 Creado: LLEVAR ${state.takeoutCounter}`);
   }
@@ -515,6 +544,7 @@
     state.orderInfo[key] = { nombre, direccion, telefono, observaciones: el.domObservaciones.value.trim() };
     closeModal(el.modalDomicilio);
     guardarCarritoRemoto(key, []);
+    saveState();
     switchOrder(key);
     showToast(`🛵 Creado: Domicilio ${state.deliveryCounter} (${nombre})`);
   }
@@ -894,7 +924,7 @@
       state.sentPedidos[key].push({ id: ref.id, total: pedido.total, productos: productos, estado: "pendiente" });
       state.orders[key] = [];
       await eliminarCarritoRemoto(key);
-      saveState();
+      saveState(); // Guardar que la clave sigue existiendo
       renderTables();
       renderProducts();
       renderOrder();
@@ -1308,6 +1338,7 @@
   function init() {
     loadState();
 
+    // Inicializar estructuras para mesas fijas
     for (let i = 1; i <= TABLE_COUNT; i++) {
       const key = `mesa_${i}`;
       if (!state.orders[key]) state.orders[key] = [];
@@ -1315,6 +1346,13 @@
     }
     state.sentPedidos.domicilio = [];
     state.sentPedidos.paraLlevar = [];
+
+    // Asegurar que las claves dinámicas existan en state.orders y state.sentPedidos
+    const dynamicKeys = Object.keys(state.orderInfo).filter(k => k.startsWith("llevar_") || k.startsWith("domicilio_"));
+    dynamicKeys.forEach(k => {
+      if (!state.orders[k]) state.orders[k] = [];
+      if (!state.sentPedidos[k]) state.sentPedidos[k] = [];
+    });
 
     renderTables();
     renderCategories();
