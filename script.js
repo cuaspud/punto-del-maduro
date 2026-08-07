@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (solución error undefined en Firebase)
+   script.js (con edición y borrado de pedidos en cocina)
    ========================================================= */
 
 (function () {
@@ -402,15 +402,48 @@
     }
 
     const count = orderItemCount(order);
-    el.orderCount.textContent = count === 1 ? "1 producto" : count + " productos";
+    el.orderCount.textContent = count === 1 ? "1 producto nuevo" : count + " productos nuevos";
 
-    const enviado = sentTotal(key);
-    const nEnviados = sentCount(key);
-    if (enviado > 0) {
-      el.orderSentBanner.textContent = `🔥 Ya en cocina: ${formatCOP(enviado)} (${nEnviados === 1 ? "1 pedido" : nEnviados + " pedidos"})`;
+    // --- BANNER DE PEDIDOS EN COCINA CON BOTONES EDITAR / BORRAR ---
+    const sentList = state.sentPedidos[key] || [];
+    if (sentList.length > 0) {
+      el.orderSentBanner.innerHTML = "";
       el.orderSentBanner.classList.add("show");
+
+      const bannerTitle = document.createElement("div");
+      bannerTitle.style.fontWeight = "800";
+      bannerTitle.style.marginBottom = "6px";
+      bannerTitle.textContent = `🔥 Ya en cocina (${formatCOP(sentTotal(key))}):`;
+      el.orderSentBanner.appendChild(bannerTitle);
+
+      sentList.forEach((sp, idx) => {
+        const itemRow = document.createElement("div");
+        itemRow.style.display = "flex";
+        itemRow.style.alignItems = "center";
+        itemRow.style.justifyContent = "space-between";
+        itemRow.style.gap = "6px";
+        itemRow.style.marginTop = "6px";
+        itemRow.style.padding = "6px 8px";
+        itemRow.style.background = "#ffffff";
+        itemRow.style.borderRadius = "8px";
+        itemRow.style.fontSize = "12px";
+
+        itemRow.innerHTML = `
+          <div style="flex:1; color: var(--black); font-weight:700;">
+            Pedido #${idx + 1}: ${formatCOP(sp.total)}
+          </div>
+          <button class="btn-edit-sent" style="background:#FFF3DB; color:var(--orange-deep); border:none; padding:4px 8px; border-radius:6px; font-weight:700; cursor:pointer;" title="Devolver para editar">✏️ Editar</button>
+          <button class="btn-delete-sent" style="background:#FCE9E6; color:var(--red); border:none; padding:4px 8px; border-radius:6px; font-weight:700; cursor:pointer;" title="Borrar de la cocina">🗑️ Borrar</button>
+        `;
+
+        itemRow.querySelector(".btn-edit-sent").addEventListener("click", () => editarPedidoEnviado(key, idx));
+        itemRow.querySelector(".btn-delete-sent").addEventListener("click", () => borrarPedidoEnviado(key, idx));
+
+        el.orderSentBanner.appendChild(itemRow);
+      });
     } else {
       el.orderSentBanner.classList.remove("show");
+      el.orderSentBanner.innerHTML = "";
     }
 
     Array.from(el.orderList.children).forEach((child) => { if (child.id !== "orderEmpty") child.remove(); });
@@ -423,6 +456,68 @@
     const owed = currentOwed();
     el.orderTotal.textContent = formatCOP(owed);
     el.btnCharge.disabled = owed <= 0;
+  }
+
+  /* ---------------------------------------------------------
+     FUNCIONES DE EDICIÓN Y BORRADO DE PEDIDOS EN COCINA
+  --------------------------------------------------------- */
+  async function editarPedidoEnviado(key, index) {
+    const sp = (state.sentPedidos[key] || [])[index];
+    if (!sp) return;
+
+    // 1. Borrar de Firebase
+    if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
+      try {
+        await window.PedidosCocina.eliminarPedido(sp.id);
+      } catch (e) {
+        console.error("Error al borrar de Firebase:", e);
+      }
+    }
+
+    // 2. Devolver productos a la orden activa de la mesa
+    if (sp.productos && Array.isArray(sp.productos)) {
+      sp.productos.forEach(p => {
+        // Encontrar el ID del producto si existe
+        const prodOrig = PRODUCTS.find(prod => prod.name === p.nombre);
+        state.orders[key].push({
+          id: uid(),
+          productId: prodOrig ? prodOrig.id : "custom",
+          name: p.nombre,
+          price: p.precio,
+          qty: p.cantidad,
+          exceptions: p.excepciones || []
+        });
+      });
+    }
+
+    // 3. Remover de sentPedidos
+    state.sentPedidos[key].splice(index, 1);
+    saveState();
+    renderTables();
+    renderProducts();
+    renderOrder();
+    showToast("Pedido devuelto a la mesa. Puedes modificarlo y volverlo a enviar.");
+  }
+
+  async function borrarPedidoEnviado(key, index) {
+    if (!confirm("¿Seguro que deseas borrar este pedido de la cocina?")) return;
+    const sp = (state.sentPedidos[key] || [])[index];
+    if (!sp) return;
+
+    if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
+      try {
+        await window.PedidosCocina.eliminarPedido(sp.id);
+      } catch (e) {
+        console.error("Error al borrar de Firebase:", e);
+      }
+    }
+
+    state.sentPedidos[key].splice(index, 1);
+    saveState();
+    renderTables();
+    renderProducts();
+    renderOrder();
+    showToast("Pedido eliminado de la cocina");
   }
 
   function buildOrderItemNode(item) {
@@ -548,7 +643,7 @@
         };
         const ref = await window.PedidosCocina.enviarPedido(pedidoExtra);
         state.sentPedidos[key] = state.sentPedidos[key] || [];
-        state.sentPedidos[key].push({ id: ref.id, total: pedidoExtra.total });
+        state.sentPedidos[key].push({ id: ref.id, total: pedidoExtra.total, productos: productos });
         await window.PedidosCocina.cobrarPedidos([ref.id], metodo);
       }
       const idsPorCobrar = (state.sentPedidos[key] || []).map((p) => p.id);
@@ -628,7 +723,7 @@
     window.PedidosCocina.enviarPedido(pedido)
       .then((ref) => {
         state.sentPedidos[key] = state.sentPedidos[key] || [];
-        state.sentPedidos[key].push({ id: ref.id, total: pedido.total });
+        state.sentPedidos[key].push({ id: ref.id, total: pedido.total, productos: productos });
         state.orders[key] = [];
         saveState();
         renderTables();
