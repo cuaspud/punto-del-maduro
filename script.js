@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con filtro de fecha en Ventas y mejoras)
+   script.js (con sincronización en tiempo real y pagos divididos)
    ========================================================= */
 
 (function () {
@@ -55,31 +55,43 @@
   const STORAGE_KEY = "elPuntoDelMaduro_state_v2";
 
   /* ---------------------------------------------------------
-     ESTADO
+     ESTADO LOCAL (solo para UI y persistencia offline)
   --------------------------------------------------------- */
   let state = {
     currentKey: "mesa_1",
     currentCategory: "Maduros",
-    orders: {
-      mesa_1: [], mesa_2: [], mesa_3: [], mesa_4: [], mesa_5: []
-    },
-    sentPedidos: {
-      mesa_1: [], mesa_2: [], mesa_3: [], mesa_4: [], mesa_5: []
-    },
+    orders: {},      // se llena con datos de Firebase
+    sentPedidos: {}, // se llena con datos de Firebase
     orderInfo: {},
     takeoutCounter: 0,
     deliveryCounter: 0
   };
 
+  // Inicializar mesas
+  for (let i = 1; i <= TABLE_COUNT; i++) {
+    const key = `mesa_${i}`;
+    state.orders[key] = [];
+    state.sentPedidos[key] = [];
+  }
+  state.sentPedidos.domicilio = [];
+  state.sentPedidos.paraLlevar = [];
+
   let excEditingItemId = null;
   let selectedPayMethod = null;
+  let carritoUnsubscribe = null; // para listener del carrito actual
 
   /* ---------------------------------------------------------
-     PERSISTENCIA
+     PERSISTENCIA (solo para datos no críticos)
   --------------------------------------------------------- */
   function saveState() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        currentKey: state.currentKey,
+        currentCategory: state.currentCategory,
+        orderInfo: state.orderInfo,
+        takeoutCounter: state.takeoutCounter,
+        deliveryCounter: state.deliveryCounter
+      }));
     } catch (e) {
       console.error("No se pudo guardar el estado", e);
     }
@@ -91,18 +103,13 @@
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!parsed) return;
-
-      if (parsed.orders) {
-        state.orders = parsed.orders;
-        state.sentPedidos = parsed.sentPedidos || {};
-        state.orderInfo = parsed.orderInfo || {};
-        state.currentKey = parsed.currentKey || "mesa_1";
-        state.takeoutCounter = parsed.takeoutCounter || 0;
-        state.deliveryCounter = parsed.deliveryCounter || 0;
-      }
       if (CATEGORIES.includes(parsed.currentCategory)) {
         state.currentCategory = parsed.currentCategory;
       }
+      state.currentKey = parsed.currentKey || "mesa_1";
+      state.orderInfo = parsed.orderInfo || {};
+      state.takeoutCounter = parsed.takeoutCounter || 0;
+      state.deliveryCounter = parsed.deliveryCounter || 0;
     } catch (e) {
       console.error("No se pudo cargar el estado", e);
     }
@@ -137,14 +144,12 @@
   function orderTotal(order) {
     if (!order) return 0;
     let total = order.reduce((sum, it) => sum + it.price * it.qty, 0);
-    
     if (state.currentKey.startsWith("domicilio_")) {
       const info = state.orderInfo[state.currentKey];
       if (info && info.direccion !== "Para llevar") {
         total += PRECIO_DOMICILIO;
       }
     }
-
     return total;
   }
 
@@ -222,7 +227,62 @@
     entregadosList: document.getElementById("entregadosList"),
     entregadosCount: document.getElementById("entregadosCount"),
     btnRecargarVentas: document.getElementById("btnRecargarVentas"),
+    // elementos del modal de pago dividido
+    inputMontoPago: document.getElementById("inputMontoPago"),
+    selectMetodoPago: document.getElementById("selectMetodoPago"),
+    pagosRegistrados: document.getElementById("pagosRegistrados"),
+    btnAgregarPago: document.getElementById("btnAgregarPago"),
+    btnFinalizarPago: document.getElementById("btnFinalizarPago"),
+    payPendiente: document.getElementById("payPendiente"),
   };
+
+  /* ---------------------------------------------------------
+     SINCRONIZACIÓN DEL CARRITO CON FIRESTORE
+  --------------------------------------------------------- */
+  function suscribirCarrito(key) {
+    // Cancelar suscripción anterior
+    if (carritoUnsubscribe) {
+      carritoUnsubscribe();
+      carritoUnsubscribe = null;
+    }
+    if (!window.PedidosCocina || typeof window.PedidosCocina.escucharCarrito !== "function") {
+      console.warn("Firebase no listo para escuchar carrito");
+      return;
+    }
+    carritoUnsubscribe = window.PedidosCocina.escucharCarrito(key, (items) => {
+      // Actualizar estado local
+      state.orders[key] = items || [];
+      // Renderizar UI
+      renderOrder();
+      renderProducts(); // para actualizar badges
+      renderTables();   // para actualizar totales de mesas
+    }, (err) => {
+      console.error("Error escuchando carrito:", err);
+    });
+  }
+
+  // Función para guardar carrito en Firebase
+  async function guardarCarritoRemoto(key, items) {
+    if (!window.PedidosCocina || typeof window.PedidosCocina.guardarCarrito !== "function") {
+      console.warn("Firebase no listo para guardar carrito");
+      return;
+    }
+    try {
+      await window.PedidosCocina.guardarCarrito(key, items);
+    } catch (e) {
+      console.error("Error guardando carrito:", e);
+    }
+  }
+
+  // Función para eliminar carrito remoto
+  async function eliminarCarritoRemoto(key) {
+    if (!window.PedidosCocina || typeof window.PedidosCocina.eliminarCarrito !== "function") return;
+    try {
+      await window.PedidosCocina.eliminarCarrito(key);
+    } catch (e) {
+      console.error("Error eliminando carrito:", e);
+    }
+  }
 
   /* ---------------------------------------------------------
      RENDER DE MESAS Y PESTAÑAS DINÁMICAS
@@ -295,8 +355,15 @@
   }
 
   function switchOrder(key) {
+    // Cancelar suscripción anterior
+    if (carritoUnsubscribe) {
+      carritoUnsubscribe();
+      carritoUnsubscribe = null;
+    }
     state.currentKey = key;
     saveState();
+    // Suscribirse al carrito de la nueva clave
+    suscribirCarrito(key);
     renderTables();
     renderCategories();
     renderProducts();
@@ -311,6 +378,8 @@
     state.orderInfo[key] = { nombre: `LLEVAR ${state.takeoutCounter}`, direccion: "Para llevar", telefono: "", observaciones: "" };
     closeModal(el.screenOrderType);
     closeModal(el.screenSelectTable);
+    // Guardar carrito vacío en Firebase
+    guardarCarritoRemoto(key, []);
     switchOrder(key);
     showToast(`📦 Creado: LLEVAR ${state.takeoutCounter}`);
   }
@@ -338,10 +407,14 @@
     state.sentPedidos[key] = [];
     state.orderInfo[key] = { nombre, direccion, telefono, observaciones: el.domObservaciones.value.trim() };
     closeModal(el.modalDomicilio);
+    guardarCarritoRemoto(key, []);
     switchOrder(key);
     showToast(`🛵 Creado: Domicilio ${state.deliveryCounter} (${nombre})`);
   }
 
+  /* ---------------------------------------------------------
+     RENDER: CATEGORÍAS
+  --------------------------------------------------------- */
   function renderCategories() {
     el.categories.innerHTML = "";
     CATEGORIES.forEach((cat) => {
@@ -358,6 +431,9 @@
     });
   }
 
+  /* ---------------------------------------------------------
+     RENDER: PRODUCTOS
+  --------------------------------------------------------- */
   function renderProducts() {
     el.productsGrid.innerHTML = "";
     const order = currentOrder();
@@ -372,7 +448,10 @@
     });
   }
 
-  function addProductToOrder(product) {
+  /* ---------------------------------------------------------
+     ACCIONES DEL CARRITO (CON SINCRONIZACIÓN)
+  --------------------------------------------------------- */
+  async function addProductToOrder(product) {
     const order = currentOrder();
     let item = order.find((it) => it.productId === product.id && (!it.exceptions || it.exceptions.length === 0));
     if (item) {
@@ -380,16 +459,48 @@
     } else {
       order.push({ id: uid(), productId: product.id, name: product.name, price: product.price, qty: 1, exceptions: [] });
     }
-    saveState();
+    // Guardar en Firebase (sin esperar respuesta para no bloquear UI)
+    await guardarCarritoRemoto(state.currentKey, order);
+    // Render local (ya se actualizará por el listener, pero por rapidez actualizamos)
     renderTables();
     renderProducts();
     renderOrder();
   }
 
+  async function changeQty(itemId, delta) {
+    const order = currentOrder();
+    const item = order.find((it) => it.id === itemId);
+    if (!item) return;
+    item.qty += delta;
+    if (item.qty <= 0) {
+      removeItem(itemId);
+      return;
+    }
+    await guardarCarritoRemoto(state.currentKey, order);
+    renderTables();
+    renderProducts();
+    renderOrder();
+  }
+
+  async function removeItem(itemId) {
+    const order = currentOrder();
+    const idx = order.findIndex((it) => it.id === itemId);
+    if (idx === -1) return;
+    order.splice(idx, 1);
+    await guardarCarritoRemoto(state.currentKey, order);
+    renderTables();
+    renderProducts();
+    renderOrder();
+  }
+
+  /* ---------------------------------------------------------
+     RENDER: PEDIDO (Carrito + SentPedidos)
+  --------------------------------------------------------- */
   function renderOrder() {
     const key = state.currentKey;
     const order = currentOrder();
 
+    // Título
     if (key.startsWith("domicilio_")) {
       const info = state.orderInfo[key] || {};
       el.orderTableTitle.innerHTML = "🛵 " + escapeHtml(info.nombre || "Domicilio") + '<span class="order-client-sub">' + escapeHtml(info.direccion || "") + "</span>";
@@ -404,18 +515,16 @@
     const count = orderItemCount(order);
     el.orderCount.textContent = count === 1 ? "1 producto nuevo" : count + " productos nuevos";
 
-    // --- BANNER DE PEDIDOS EN COCINA CON BOTONES EDITAR / BORRAR ---
+    // BANNER de pedidos en cocina
     const sentList = state.sentPedidos[key] || [];
     if (sentList.length > 0) {
       el.orderSentBanner.innerHTML = "";
       el.orderSentBanner.classList.add("show");
-
       const bannerTitle = document.createElement("div");
       bannerTitle.style.fontWeight = "800";
       bannerTitle.style.marginBottom = "6px";
       bannerTitle.textContent = `🔥 Ya en cocina (${formatCOP(sentTotal(key))}):`;
       el.orderSentBanner.appendChild(bannerTitle);
-
       sentList.forEach((sp, idx) => {
         const itemRow = document.createElement("div");
         itemRow.style.display = "flex";
@@ -427,7 +536,6 @@
         itemRow.style.background = "#ffffff";
         itemRow.style.borderRadius = "8px";
         itemRow.style.fontSize = "12px";
-
         itemRow.innerHTML = `
           <div style="flex:1; color: var(--black); font-weight:700;">
             Pedido #${idx + 1}: ${formatCOP(sp.total)}
@@ -435,10 +543,8 @@
           <button class="btn-edit-sent" style="background:#FFF3DB; color:var(--orange-deep); border:none; padding:4px 8px; border-radius:6px; font-weight:700; cursor:pointer;" title="Devolver para editar">✏️ Editar</button>
           <button class="btn-delete-sent" style="background:#FCE9E6; color:var(--red); border:none; padding:4px 8px; border-radius:6px; font-weight:700; cursor:pointer;" title="Borrar de la cocina">🗑️ Borrar</button>
         `;
-
         itemRow.querySelector(".btn-edit-sent").addEventListener("click", () => editarPedidoEnviado(key, idx));
         itemRow.querySelector(".btn-delete-sent").addEventListener("click", () => borrarPedidoEnviado(key, idx));
-
         el.orderSentBanner.appendChild(itemRow);
       });
     } else {
@@ -446,6 +552,7 @@
       el.orderSentBanner.innerHTML = "";
     }
 
+    // Lista de productos del carrito
     Array.from(el.orderList.children).forEach((child) => { if (child.id !== "orderEmpty") child.remove(); });
     if (order.length === 0) {
       el.orderEmpty.style.display = "flex";
@@ -456,64 +563,6 @@
     const owed = currentOwed();
     el.orderTotal.textContent = formatCOP(owed);
     el.btnCharge.disabled = owed <= 0;
-  }
-
-  /* ---------------------------------------------------------
-     FUNCIONES DE EDICIÓN Y BORRADO DE PEDIDOS EN COCINA
-  --------------------------------------------------------- */
-  async function editarPedidoEnviado(key, index) {
-    const sp = (state.sentPedidos[key] || [])[index];
-    if (!sp) return;
-
-    if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
-      try {
-        await window.PedidosCocina.eliminarPedido(sp.id);
-      } catch (e) {
-        console.error("Error al borrar de Firebase:", e);
-      }
-    }
-
-    if (sp.productos && Array.isArray(sp.productos)) {
-      sp.productos.forEach((p) => {
-        const prodOrig = PRODUCTS.find((prod) => prod.name === p.nombre);
-        state.orders[key].push({
-          id: uid(),
-          productId: prodOrig ? prodOrig.id : "custom",
-          name: p.nombre,
-          price: p.precio,
-          qty: p.cantidad,
-          exceptions: p.excepciones || [],
-        });
-      });
-    }
-
-    state.sentPedidos[key].splice(index, 1);
-    saveState();
-    renderTables();
-    renderProducts();
-    renderOrder();
-    showToast("Pedido devuelto a la mesa. Puedes modificarlo.");
-  }
-
-  async function borrarPedidoEnviado(key, index) {
-    if (!confirm("¿Seguro que deseas borrar este pedido de la cocina?")) return;
-    const sp = (state.sentPedidos[key] || [])[index];
-    if (!sp) return;
-
-    if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
-      try {
-        await window.PedidosCocina.eliminarPedido(sp.id);
-      } catch (e) {
-        console.error("Error al borrar de Firebase:", e);
-      }
-    }
-
-    state.sentPedidos[key].splice(index, 1);
-    saveState();
-    renderTables();
-    renderProducts();
-    renderOrder();
-    showToast("Pedido eliminado de la cocina");
   }
 
   function buildOrderItemNode(item) {
@@ -530,31 +579,8 @@
     return wrap;
   }
 
-  function changeQty(itemId, delta) {
-    const order = currentOrder();
-    const item = order.find((it) => it.id === itemId);
-    if (!item) return;
-    item.qty += delta;
-    if (item.qty <= 0) { removeItem(itemId); return; }
-    saveState();
-    renderTables();
-    renderProducts();
-    renderOrder();
-  }
-
-  function removeItem(itemId) {
-    const order = currentOrder();
-    const idx = order.findIndex((it) => it.id === itemId);
-    if (idx === -1) return;
-    order.splice(idx, 1);
-    saveState();
-    renderTables();
-    renderProducts();
-    renderOrder();
-  }
-
   /* ---------------------------------------------------------
-     MODALES
+     MODAL EXCEPCIONES
   --------------------------------------------------------- */
   function openExceptionsModal(itemId) {
     const order = currentOrder();
@@ -570,7 +596,7 @@
     openModal(el.modalExceptions);
   }
 
-  function saveExceptions() {
+  async function saveExceptions() {
     if (!excEditingItemId) return;
     const order = currentOrder();
     const item = order.find((it) => it.id === excEditingItemId);
@@ -581,107 +607,129 @@
     const note = el.excNote.value.trim();
     if (note) chosen.push(note);
     item.exceptions = chosen;
-    saveState();
+    await guardarCarritoRemoto(state.currentKey, order);
     closeModal(el.modalExceptions);
     renderProducts();
     renderOrder();
     showToast("Excepciones guardadas");
   }
 
+  /* ---------------------------------------------------------
+     MODAL DE PAGO DIVIDIDO
+  --------------------------------------------------------- */
+  let pagoKey = null;
+  let pagoTotal = 0;
+  let pagoPendiente = 0;
+  let pedidoIdParaPago = null;
+
   function openPaymentModal() {
     const owed = currentOwed();
     if (owed <= 0) return;
-    selectedPayMethod = null;
-    el.btnConfirmPay.disabled = true;
-    el.payMethods.querySelectorAll(".pay-method").forEach((b) => b.classList.remove("selected"));
-    el.payTotal.textContent = formatCOP(owed);
-    openModal(el.modalPayment);
-  }
 
-  /* ---------------------------------------------------------
-     COBRAR
-  --------------------------------------------------------- */
-  async function confirmPayment() {
-    if (!selectedPayMethod) return;
-    const key = state.currentKey;
-    const order = currentOrder();
-    const metodo = selectedPayMethod;
+    pagoKey = state.currentKey;
+    pagoTotal = owed;
+    pagoPendiente = owed;
 
-    if (!window.PedidosCocina) {
-      showToast("Firebase no está configurado. Revisa firebase.js");
+    // Obtener el primer ID de pedido en cocina (el que aún no está pagado)
+    const sentList = state.sentPedidos[pagoKey] || [];
+    pedidoIdParaPago = sentList.length > 0 ? sentList[0].id : null;
+
+    // Si no hay pedido en cocina, pero sí hay carrito, lo enviamos a cocina primero? 
+    // En este flujo, asumimos que el carrito ya fue enviado a cocina (o está pendiente).
+    // Si no hay id, significa que no se ha enviado nada a cocina; en ese caso, forzamos envío.
+    if (!pedidoIdParaPago) {
+      showToast("Primero envía el pedido a cocina");
       return;
     }
 
-    const isTakeout = key.startsWith("llevar_");
-    const isDelivery = key.startsWith("domicilio_");
-    const isMesa = key.startsWith("mesa_");
-    const info = state.orderInfo[key] || {};
+    // Limpiar UI
+    document.getElementById("pagosRegistrados").innerHTML = "";
+    el.inputMontoPago.value = pagoPendiente;
+    el.selectMetodoPago.value = "Efectivo";
+    el.btnFinalizarPago.disabled = true;
 
-    el.btnConfirmPay.disabled = true;
+    document.getElementById("payTotal").textContent = formatCOP(pagoTotal);
+    actualizarPendiente(pagoPendiente);
+
+    openModal(el.modalPayment);
+  }
+
+  function actualizarPendiente(pendiente) {
+    el.payPendiente.textContent = formatCOP(pendiente);
+    el.btnFinalizarPago.disabled = pendiente > 0;
+  }
+
+  async function agregarPagoParcial() {
+    const monto = parseFloat(el.inputMontoPago.value);
+    const metodo = el.selectMetodoPago.value;
+
+    if (!monto || monto <= 0) {
+      showToast("Ingresa un monto válido");
+      return;
+    }
+    if (monto > pagoPendiente) {
+      showToast("El monto no puede superar el pendiente");
+      return;
+    }
+    if (!pedidoIdParaPago) {
+      showToast("No hay pedido en cocina para pagar");
+      return;
+    }
+
     try {
-      const idsPorCobrar = (state.sentPedidos[key] || []).map((p) => p.id);
+      const result = await window.PedidosCocina.registrarPagoParcial(pedidoIdParaPago, metodo, monto);
+      
+      // Actualizar UI de pagos registrados
+      const container = document.getElementById("pagosRegistrados");
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; font-size:14px;";
+      row.innerHTML = `<span>${metodo}</span><span>${formatCOP(monto)}</span>`;
+      container.appendChild(row);
 
-      if (order.length > 0) {
-        const productos = order.map((it) => ({
-          nombre: it.name,
-          cantidad: it.qty,
-          precio: it.price,
-          excepciones: it.exceptions || [],
-        }));
-        const pedidoExtra = {
-          tipoPedido: isTakeout ? "paraLlevar" : (isDelivery ? "domicilio" : "mesa"),
-          mesa: isMesa ? parseInt(key.replace("mesa_", "")) : null,
-          nombreCliente: (isDelivery || isTakeout) ? (info.nombre || "Cliente") : null,
-          direccion: (isDelivery || isTakeout) ? (info.direccion || "") : null,
-          telefono: (isDelivery || isTakeout) ? (info.telefono || "") : null,
-          productos: productos,
-          observaciones: (isDelivery || isTakeout) ? (info.observaciones || "") : "",
-          total: orderTotal(order),
-          estado: "entregado",
-        };
-        const ref = await window.PedidosCocina.enviarPedido(pedidoExtra);
-        idsPorCobrar.push(ref.id);
-      }
+      pagoPendiente -= monto;
+      actualizarPendiente(pagoPendiente);
 
-      if (idsPorCobrar.length > 0) {
-        await window.PedidosCocina.cobrarPedidos(idsPorCobrar, metodo);
-      }
-
-      if (isTakeout || isDelivery) {
-        delete state.orders[key];
-        delete state.sentPedidos[key];
-        delete state.orderInfo[key];
-        state.currentKey = "mesa_1";
+      if (pagoPendiente <= 0) {
+        showToast("✅ Pedido pagado completamente");
+        el.btnFinalizarPago.disabled = false;
+        // También podríamos cerrar el modal automáticamente tras unos segundos
       } else {
-        state.orders[key] = [];
-        state.sentPedidos[key] = [];
+        showToast(`💰 Pago registrado. Pendiente: ${formatCOP(pagoPendiente)}`);
+        el.inputMontoPago.value = pagoPendiente;
       }
 
+    } catch (err) {
+      console.error("Error al registrar pago:", err);
+      showToast("Error al registrar pago. Revisa consola.");
+    }
+  }
+
+  async function finalizarPago() {
+    // El pedido ya está marcado como pagado en Firestore (por los pagos)
+    // Solo limpiamos el carrito local y remoto
+    try {
+      await eliminarCarritoRemoto(pagoKey);
+      // Limpiar estado local
+      state.orders[pagoKey] = [];
+      state.sentPedidos[pagoKey] = [];
       saveState();
       closeModal(el.modalPayment);
       renderTables();
       renderProducts();
       renderOrder();
-
-      let mensaje = "Pago registrado (" + metodo + ") · ";
-      if (isTakeout) mensaje += "Pedido para llevar entregado";
-      else if (isDelivery) mensaje += "Domicilio entregado";
-      else mensaje += "Mesa " + key.replace("mesa_", "") + " liberada";
-      showToast(mensaje);
-
-      setTimeout(() => cargarVentasDirectas(), 500);
+      showToast("✅ Pago completado");
+      // Recargar ventas
+      setTimeout(cargarVentasDirectas, 500);
     } catch (err) {
-      console.error("❌ Error al registrar el pago:", err);
-      showToast("No se pudo registrar el pago. Revisa la consola.");
-    } finally {
-      el.btnConfirmPay.disabled = false;
+      console.error("Error al finalizar pago:", err);
+      showToast("Error al finalizar pago");
     }
   }
 
   /* ---------------------------------------------------------
-     ENVIAR A COCINA
+     ENVIAR A COCINA (con guardado de carrito)
   --------------------------------------------------------- */
-  function sendToKitchen() {
+  async function sendToKitchen() {
     const key = state.currentKey;
     const order = currentOrder();
     if (order.length === 0) { showToast("Agrega productos antes de enviar a cocina"); return; }
@@ -715,25 +763,90 @@
     };
 
     el.btnKitchen.disabled = true;
-    window.PedidosCocina.enviarPedido(pedido)
-      .then((ref) => {
-        state.sentPedidos[key] = state.sentPedidos[key] || [];
-        state.sentPedidos[key].push({ id: ref.id, total: pedido.total, productos: productos });
-        state.orders[key] = [];
-        saveState();
-        renderTables();
-        renderProducts();
-        renderOrder();
-        showToast("Pedido enviado a cocina 🚀 · Ya está en la cuenta para cobrar");
-      })
-      .catch((err) => { console.error(err); showToast("No se pudo enviar el pedido."); })
-      .finally(() => { el.btnKitchen.disabled = false; });
+    try {
+      const ref = await window.PedidosCocina.enviarPedido(pedido);
+      // Guardar referencia en sentPedidos
+      if (!state.sentPedidos[key]) state.sentPedidos[key] = [];
+      state.sentPedidos[key].push({ id: ref.id, total: pedido.total, productos: productos });
+      // Limpiar carrito local y remoto
+      state.orders[key] = [];
+      await eliminarCarritoRemoto(key);
+      saveState();
+      renderTables();
+      renderProducts();
+      renderOrder();
+      showToast("Pedido enviado a cocina 🚀 · Ya está en la cuenta para cobrar");
+    } catch (err) {
+      console.error(err);
+      showToast("No se pudo enviar el pedido.");
+    } finally {
+      el.btnKitchen.disabled = false;
+    }
   }
 
   /* ---------------------------------------------------------
-     VENTAS — CON FILTRO POR FECHA
+     FUNCIONES DE EDICIÓN Y BORRADO DE PEDIDOS EN COCINA
   --------------------------------------------------------- */
-  // Selección activa: { type: "day", key: "YYYY-MM-DD" } o { type: "month", key: "YYYY-MM" }
+  async function editarPedidoEnviado(key, index) {
+    const sp = (state.sentPedidos[key] || [])[index];
+    if (!sp) return;
+
+    if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
+      try {
+        await window.PedidosCocina.eliminarPedido(sp.id);
+      } catch (e) {
+        console.error("Error al borrar de Firebase:", e);
+      }
+    }
+
+    if (sp.productos && Array.isArray(sp.productos)) {
+      sp.productos.forEach((p) => {
+        const prodOrig = PRODUCTS.find((prod) => prod.name === p.nombre);
+        state.orders[key].push({
+          id: uid(),
+          productId: prodOrig ? prodOrig.id : "custom",
+          name: p.nombre,
+          price: p.precio,
+          qty: p.cantidad,
+          exceptions: p.excepciones || [],
+        });
+      });
+      // Guardar carrito actualizado en Firebase
+      await guardarCarritoRemoto(key, state.orders[key]);
+    }
+
+    state.sentPedidos[key].splice(index, 1);
+    saveState();
+    renderTables();
+    renderProducts();
+    renderOrder();
+    showToast("Pedido devuelto a la mesa. Puedes modificarlo.");
+  }
+
+  async function borrarPedidoEnviado(key, index) {
+    if (!confirm("¿Seguro que deseas borrar este pedido de la cocina?")) return;
+    const sp = (state.sentPedidos[key] || [])[index];
+    if (!sp) return;
+
+    if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
+      try {
+        await window.PedidosCocina.eliminarPedido(sp.id);
+      } catch (e) {
+        console.error("Error al borrar de Firebase:", e);
+      }
+    }
+
+    state.sentPedidos[key].splice(index, 1);
+    saveState();
+    renderTables();
+    renderProducts();
+    renderOrder();
+    showToast("Pedido eliminado de la cocina");
+  }
+
+  /* ---------------------------------------------------------
+     VENTAS — CARGA DIRECTA Y RENDER
+  --------------------------------------------------------- */
   let ventasSelection = { type: "day", key: getTodayKey() };
   let lastVentasRaw = [];
 
@@ -775,9 +888,21 @@
       const ventas = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        // Incluimos solo los pagados, sin importar estado (archivado o entregado)
-        if (data.pagado === true) {
-          ventas.push({ id: doc.id, ...data });
+        if (data.pagado === true || (data.pagos && data.pagos.length > 0)) {
+          // Si tiene pagos, desglosamos
+          if (data.pagos && data.pagos.length > 0) {
+            data.pagos.forEach(pago => {
+              ventas.push({
+                id: doc.id + "_" + pago.metodo + "_" + pago.monto,
+                ...data,
+                metodoPago: pago.metodo,
+                total: pago.monto,
+                horaPago: pago.horaPago || data.horaPago
+              });
+            });
+          } else {
+            ventas.push({ id: doc.id, ...data });
+          }
         }
       });
       ventas.sort((a, b) => {
@@ -799,7 +924,7 @@
   }
 
   function renderVentas(ventas) {
-    // 1. Filtrar según la selección actual
+    // Filtrar según selección
     let filtradas = [];
     if (ventasSelection.type === "day") {
       filtradas = ventas.filter(v => {
@@ -807,21 +932,18 @@
         return dayKeyOf(fecha) === ventasSelection.key;
       });
     } else {
-      // mes
       filtradas = ventas.filter(v => {
         const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
         return monthKeyOf(fecha) === ventasSelection.key;
       });
     }
 
-    // 2. Ordenar por fecha (más reciente primero)
     filtradas.sort((a, b) => {
       const ta = a.horaPago && typeof a.horaPago.toMillis === "function" ? a.horaPago.toMillis() : 0;
       const tb = b.horaPago && typeof b.horaPago.toMillis === "function" ? b.horaPago.toMillis() : 0;
       return tb - ta;
     });
 
-    // 3. Renderizar
     const hoyKey = getTodayKey();
     let titulo = "📊 Ventas";
     if (ventasSelection.type === "day") {
@@ -870,7 +992,7 @@
     const hoyKey = getTodayKey();
     el.ventasDaysList.innerHTML = "";
 
-    // Botón "Hoy"
+    // Botón Hoy
     const hoyVentas = ventas.filter(v => {
       const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
       return dayKeyOf(fecha) === hoyKey;
@@ -886,7 +1008,7 @@
     });
     el.ventasDaysList.appendChild(btnHoy);
 
-    // Agrupar por día (mostrar los últimos 30 días con ventas)
+    // Días anteriores con ventas (máximo 10)
     const daysMap = new Map();
     ventas.forEach(v => {
       const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
@@ -896,11 +1018,7 @@
       entry.total += v.total || 0;
       entry.count += 1;
     });
-
-    // Ordenar de más reciente a más antiguo
     const sortedDays = Array.from(daysMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-
-    // Mostrar solo los días que no sean hoy (máximo 10)
     let count = 0;
     for (const [key, data] of sortedDays) {
       if (key === hoyKey) continue;
@@ -918,7 +1036,7 @@
       count++;
     }
 
-    // Botón "Este mes"
+    // Este mes
     const mesKey = hoyKey.slice(0, 7);
     const mesVentas = ventas.filter(v => {
       const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
@@ -938,30 +1056,6 @@
       renderVentas(ventas);
     });
     el.ventasDaysList.appendChild(monthBtn);
-  }
-
-  /* ---------------------------------------------------------
-     TIPO DE PEDIDO Y SELECCIÓN DE MESA
-  --------------------------------------------------------- */
-  function renderSelectTableGrid() {
-    el.selectTableGrid.innerHTML = "";
-    for (let i = 1; i <= TABLE_COUNT; i++) {
-      const btn = document.createElement("button");
-      btn.className = "select-table-btn";
-      btn.textContent = "Mesa " + i;
-      btn.addEventListener("click", () => pickMesa(i));
-      el.selectTableGrid.appendChild(btn);
-    }
-  }
-
-  function openOrderTypeScreen() {
-    openModal(el.screenOrderType);
-  }
-
-  function pickMesa(tableNum) {
-    switchOrder(`mesa_${tableNum}`);
-    closeModal(el.screenSelectTable);
-    closeModal(el.screenOrderType);
   }
 
   /* ---------------------------------------------------------
@@ -998,20 +1092,42 @@
   }
 
   /* ---------------------------------------------------------
+     SELECTOR DE MESA (pantalla)
+  --------------------------------------------------------- */
+  function renderSelectTableGrid() {
+    el.selectTableGrid.innerHTML = "";
+    for (let i = 1; i <= TABLE_COUNT; i++) {
+      const btn = document.createElement("button");
+      btn.className = "select-table-btn";
+      btn.textContent = "Mesa " + i;
+      btn.addEventListener("click", () => pickMesa(i));
+      el.selectTableGrid.appendChild(btn);
+    }
+  }
+
+  function openOrderTypeScreen() {
+    openModal(el.screenOrderType);
+  }
+
+  function pickMesa(tableNum) {
+    switchOrder(`mesa_${tableNum}`);
+    closeModal(el.screenSelectTable);
+    closeModal(el.screenOrderType);
+  }
+
+  /* ---------------------------------------------------------
      EVENTOS GLOBALES
   --------------------------------------------------------- */
   el.btnCharge.addEventListener("click", openPaymentModal);
   el.btnNewOrder.addEventListener("click", openOrderTypeScreen);
   el.btnSaveExceptions.addEventListener("click", saveExceptions);
-  el.btnConfirmPay.addEventListener("click", confirmPayment);
+  // el.btnConfirmPay ya no se usa (usamos nuevo flujo)
   el.btnKitchen.addEventListener("click", sendToKitchen);
   el.btnOrderType.addEventListener("click", openOrderTypeScreen);
-  
   el.btnPickMesa.addEventListener("click", () => {
     closeModal(el.screenOrderType);
     openModal(el.screenSelectTable);
   });
-  
   el.btnPickDomicilio.addEventListener("click", abrirModalNuevoDomicilio);
   el.btnSaveDomicilio.addEventListener("click", saveDomicilio);
 
@@ -1019,7 +1135,6 @@
     openModal(el.screenEntregados);
   });
 
-  // Al abrir Ventas, seleccionamos HOY y recargamos
   el.btnVentas.addEventListener("click", async () => {
     ventasSelection = { type: "day", key: getTodayKey() };
     const ventas = await cargarVentasDirectas();
@@ -1036,58 +1151,19 @@
     });
   }
 
-  el.payMethods.querySelectorAll(".pay-method").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      selectedPayMethod = btn.getAttribute("data-method");
-      el.payMethods.querySelectorAll(".pay-method").forEach((b) => b.classList.remove("selected"));
-      btn.classList.add("selected");
-      el.btnConfirmPay.disabled = false;
-    });
+  // Eventos para pagos divididos
+  el.btnAgregarPago.addEventListener("click", agregarPagoParcial);
+  el.btnFinalizarPago.addEventListener("click", finalizarPago);
+  el.inputMontoPago.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el.btnAgregarPago.click();
+    }
   });
 
   /* ---------------------------------------------------------
-     INIT CON ESCUCHADORES EN TIEMPO REAL
+     ENTREGADOS (historial)
   --------------------------------------------------------- */
-  function init() {
-    loadState();
-    renderTables();
-    renderCategories();
-    renderProducts();
-    renderOrder();
-    renderSelectTableGrid();
-
-    let intentos = 0;
-    const maxIntentos = 20;
-    function iniciarListeners() {
-      if (window.PedidosCocina && typeof window.PedidosCocina.escucharEntregados === 'function') {
-        window.PedidosCocina.escucharEntregados((pedidos) => {
-          renderEntregados(pedidos);
-        }, (err) => console.error("Error entregados:", err));
-
-        if (typeof window.PedidosCocina.escucharVentasHoy === 'function') {
-          window.PedidosCocina.escucharVentasHoy((ventas) => {
-            lastVentasRaw = ventas;
-            // Solo actualizar si la pantalla de ventas está abierta, o almacenar en cache
-            renderVentas(ventas);
-            renderVentasDaysPanel(ventas);
-          }, (err) => console.error("Error ventas:", err));
-        }
-      } else {
-        intentos++;
-        if (intentos < maxIntentos) {
-          setTimeout(iniciarListeners, 500);
-        }
-      }
-    }
-    iniciarListeners();
-
-    setTimeout(() => {
-      if (window.firebaseApp) {
-        cargarVentasDirectas();
-      }
-    }, 1000);
-  }
-
   function renderEntregados(pedidos) {
     const ordenados = pedidos.slice().reverse();
     el.entregadosList.innerHTML = "";
@@ -1112,6 +1188,70 @@
       });
     }
     el.entregadosCount.textContent = ordenados.length === 1 ? "1 pedido" : ordenados.length + " pedidos";
+  }
+
+  /* ---------------------------------------------------------
+     INIT
+  --------------------------------------------------------- */
+  function init() {
+    loadState();
+    // Inicializar estructuras
+    for (let i = 1; i <= TABLE_COUNT; i++) {
+      const key = `mesa_${i}`;
+      if (!state.orders[key]) state.orders[key] = [];
+      if (!state.sentPedidos[key]) state.sentPedidos[key] = [];
+    }
+    state.sentPedidos.domicilio = [];
+    state.sentPedidos.paraLlevar = [];
+
+    renderTables();
+    renderCategories();
+    renderProducts();
+    renderOrder();
+    renderSelectTableGrid();
+
+    // Suscribirse al carrito actual
+    suscribirCarrito(state.currentKey);
+
+    // Listeners de Firebase para pedidos de cocina
+    let intentos = 0;
+    const maxIntentos = 20;
+    function iniciarListeners() {
+      if (window.PedidosCocina && typeof window.PedidosCocina.escucharEntregados === 'function') {
+        window.PedidosCocina.escucharEntregados((pedidos) => {
+          renderEntregados(pedidos);
+        }, (err) => console.error("Error entregados:", err));
+
+        if (typeof window.PedidosCocina.escucharVentasHoy === 'function') {
+          window.PedidosCocina.escucharVentasHoy((ventas) => {
+            lastVentasRaw = ventas;
+            renderVentas(ventas);
+            renderVentasDaysPanel(ventas);
+          }, (err) => console.error("Error ventas:", err));
+        }
+        // También escuchar pendientes y listos para actualizar sentPedidos si es necesario
+        // Pero eso ya se maneja desde el envío y la UI local.
+      } else {
+        intentos++;
+        if (intentos < maxIntentos) {
+          setTimeout(iniciarListeners, 500);
+        }
+      }
+    }
+    iniciarListeners();
+
+    // Carga inicial de ventas
+    setTimeout(() => {
+      if (window.firebaseApp) {
+        cargarVentasDirectas();
+      }
+    }, 1500);
+
+    // Si no hay orden seleccionada, abrir tipo de pedido
+    if (!state.currentKey || !state.orders[state.currentKey]) {
+      state.currentKey = "mesa_1";
+      openOrderTypeScreen();
+    }
   }
 
   init();
