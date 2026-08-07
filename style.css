@@ -74,7 +74,7 @@ input, textarea { font-family: inherit; }
   z-index: 9999 !important;
   position: relative;
   overflow: visible;
-  flex-wrap: nowrap; /* Por defecto en escritorio */
+  flex-wrap: nowrap;
 }
 
 .brand {
@@ -92,8 +92,10 @@ input, textarea { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 24px;
   box-shadow: 0 4px 10px rgba(255, 107, 26, 0.35);
+  /* 🔥 FIX PARA EMOGIS: forzar fuentes compatibles */
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Android Emoji", sans-serif;
 }
 
 .brand-text h1 {
@@ -1414,9 +1416,8 @@ input, textarea { font-family: inherit; }
     padding: 0 0 10px 0;
   }
 
-  /* ===== CAMBIO CLAVE PARA QUE LAS MESAS APAREZCAN EN MÓVIL ===== */
   .topbar {
-    flex-wrap: wrap;        /* Permite que la barra de mesas baje a la siguiente línea */
+    flex-wrap: wrap;
     padding: 8px 10px;
     gap: 6px;
     align-items: center;
@@ -1435,10 +1436,9 @@ input, textarea { font-family: inherit; }
     font-size: 14px;
   }
   .brand-text span {
-    display: none; /* Oculta "Sistema de pedidos" en móvil para ahorrar espacio */
+    display: none;
   }
 
-  /* Los botones de acción deben tener tamaño fijo y no crecer */
   .btn-order-type,
   .btn-new-order {
     flex: 0 0 auto;
@@ -1452,10 +1452,9 @@ input, textarea { font-family: inherit; }
     font-size: 12px;
   }
 
-  /* La barra de mesas ocupa todo el ancho en la segunda línea */
   .tables-bar {
-    flex: 1 1 100%;        /* Ocupa toda la fila */
-    order: 3;              /* Se coloca después de la marca y los botones */
+    flex: 1 1 100%;
+    order: 3;
     margin-top: 4px;
     padding: 4px 2px;
     gap: 6px;
@@ -1475,7 +1474,6 @@ input, textarea { font-family: inherit; }
     font-size: 9px;
   }
 
-  /* Ajustar el resto de elementos */
   .screen-box {
     padding: 20px 15px;
   }
