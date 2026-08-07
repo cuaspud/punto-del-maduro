@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   firebase.js (con pagos sin serverTimestamp en arrays)
+   firebase.js (corregido: sin serverTimestamp en arrays)
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -45,14 +45,12 @@ const carritosRef = collection(db, CARRITOS_COL);
    CARRITOS (SINCRONIZACIÓN EN TIEMPO REAL)
 --------------------------------------------------------- */
 export async function guardarCarrito(key, items) {
-  console.log(`💾 Guardando carrito para ${key}:`, items);
   const ref = doc(db, CARRITOS_COL, key);
   await setDoc(ref, {
     key,
     items: items || [],
     updatedAt: serverTimestamp(),
   }, { merge: true });
-  console.log(`✅ Carrito guardado para ${key}`);
 }
 
 export async function obtenerCarrito(key) {
@@ -65,25 +63,17 @@ export async function obtenerCarrito(key) {
 }
 
 export function escucharCarrito(key, callback, onError) {
-  console.log(`🔔 Suscribiendo a carrito: ${key}`);
   const ref = doc(db, CARRITOS_COL, key);
   return onSnapshot(ref, (snap) => {
     if (snap.exists()) {
-      const data = snap.data();
-      console.log(`📥 Datos recibidos para ${key}:`, data.items);
-      callback(data.items || []);
+      callback(snap.data().items || []);
     } else {
-      console.log(`📭 Carrito vacío para ${key}`);
       callback([]);
     }
-  }, (err) => {
-    console.error(`❌ Error en listener de carrito ${key}:`, err);
-    if (onError) onError(err);
-  });
+  }, onError);
 }
 
 export async function eliminarCarrito(key) {
-  console.log(`🗑️ Eliminando carrito: ${key}`);
   const ref = doc(db, CARRITOS_COL, key);
   await deleteDoc(ref);
 }
@@ -92,7 +82,6 @@ export async function eliminarCarrito(key) {
    ENVIAR PEDIDO A COCINA
 --------------------------------------------------------- */
 export async function enviarPedido(pedido) {
-  console.log("📦 Enviando pedido a cocina:", pedido);
   return addDoc(pedidosRef, {
     ...pedido,
     pagado: false,
@@ -177,7 +166,7 @@ export function eliminarPedido(id) {
 }
 
 /* ---------------------------------------------------------
-   PAGOS PARCIALES (CORREGIDO: SIN serverTimestamp EN ARRAYS)
+   PAGOS PARCIALES (CORREGIDO: sin serverTimestamp en arrays)
 --------------------------------------------------------- */
 export async function registrarPagoParcial(id, metodo, monto) {
   if (!id || !metodo || monto <= 0) return;
@@ -189,22 +178,21 @@ export async function registrarPagoParcial(id, metodo, monto) {
   const total = data.total || 0;
   const pagos = data.pagos || [];
 
-  // Crear nuevo pago con timestamp numérico (NO usar serverTimestamp dentro del array)
+  // Usamos Date.now() en lugar de serverTimestamp() para evitar error en arrays
   const nuevoPago = {
     metodo,
     monto,
-    horaPago: new Date().toISOString(), // timestamp como string ISO (o puedes usar Date.now())
+    horaPago: new Date().toISOString() // timestamp como string
   };
   pagos.push(nuevoPago);
 
   const totalPagado = pagos.reduce((sum, p) => sum + p.monto, 0);
   const pagado = totalPagado >= total;
 
-  // Actualizar documento: pagos array, pagado, y horaPago del documento con serverTimestamp
   await updateDoc(docRef, {
     pagos: pagos,
     pagado: pagado,
-    horaPago: serverTimestamp(), // solo aquí usamos serverTimestamp
+    horaPago: serverTimestamp() // este sí puede ir fuera del array
   });
 
   return { pagos, pagado, totalPagado };
