@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (versión corregida sin errores)
+   script.js (con filtro de fecha en Ventas y mejoras)
    ========================================================= */
 
 (function () {
@@ -465,7 +465,6 @@
     const sp = (state.sentPedidos[key] || [])[index];
     if (!sp) return;
 
-    // 1. Eliminar documento en Firebase
     if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
       try {
         await window.PedidosCocina.eliminarPedido(sp.id);
@@ -474,7 +473,6 @@
       }
     }
 
-    // 2. Devolver productos a la orden activa de la mesa
     if (sp.productos && Array.isArray(sp.productos)) {
       sp.productos.forEach((p) => {
         const prodOrig = PRODUCTS.find((prod) => prod.name === p.nombre);
@@ -489,7 +487,6 @@
       });
     }
 
-    // 3. Remover de sentPedidos
     state.sentPedidos[key].splice(index, 1);
     saveState();
     renderTables();
@@ -624,7 +621,6 @@
     try {
       const idsPorCobrar = (state.sentPedidos[key] || []).map((p) => p.id);
 
-      // Si hay ítems extra en borrador que no se enviaron a cocina, se crean ya entregados
       if (order.length > 0) {
         const productos = order.map((it) => ({
           nombre: it.name,
@@ -651,7 +647,6 @@
         await window.PedidosCocina.cobrarPedidos(idsPorCobrar, metodo);
       }
 
-      // Eliminar pestaña dinámica al cobrar
       if (isTakeout || isDelivery) {
         delete state.orders[key];
         delete state.sentPedidos[key];
@@ -736,8 +731,17 @@
   }
 
   /* ---------------------------------------------------------
-     VENTAS — CARGA Y RENDERIZADO
+     VENTAS — CON FILTRO POR FECHA
   --------------------------------------------------------- */
+  // Selección activa: { type: "day", key: "YYYY-MM-DD" } o { type: "month", key: "YYYY-MM" }
+  let ventasSelection = { type: "day", key: getTodayKey() };
+  let lastVentasRaw = [];
+
+  function getTodayKey() {
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
   function fechaDeHora(hora) {
     if (!hora || typeof hora.toDate !== "function") return new Date();
     return hora.toDate();
@@ -747,9 +751,19 @@
     return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
   }
 
+  function monthKeyOf(date) {
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+  }
+
   function horaTexto(hora) {
     if (!hora || typeof hora.toDate !== "function") return "--:--";
     return hora.toDate().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function formatDateKey(key) {
+    const parts = key.split("-");
+    const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    return `${parseInt(parts[2])} de ${meses[parseInt(parts[1]) - 1]} de ${parts[0]}`;
   }
 
   async function cargarVentasDirectas() {
@@ -761,7 +775,8 @@
       const ventas = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        if (data.pagado === true && data.estado === "entregado") {
+        // Incluimos solo los pagados, sin importar estado (archivado o entregado)
+        if (data.pagado === true) {
           ventas.push({ id: doc.id, ...data });
         }
       });
@@ -770,6 +785,7 @@
         const tb = b.horaPago && typeof b.horaPago.toMillis === "function" ? b.horaPago.toMillis() : 0;
         return tb - ta;
       });
+      lastVentasRaw = ventas;
       renderVentas(ventas);
       renderVentasDaysPanel(ventas);
       return ventas;
@@ -783,28 +799,64 @@
   }
 
   function renderVentas(ventas) {
-    const filtradas = ventas.slice(0, 50);
+    // 1. Filtrar según la selección actual
+    let filtradas = [];
+    if (ventasSelection.type === "day") {
+      filtradas = ventas.filter(v => {
+        const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+        return dayKeyOf(fecha) === ventasSelection.key;
+      });
+    } else {
+      // mes
+      filtradas = ventas.filter(v => {
+        const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+        return monthKeyOf(fecha) === ventasSelection.key;
+      });
+    }
+
+    // 2. Ordenar por fecha (más reciente primero)
+    filtradas.sort((a, b) => {
+      const ta = a.horaPago && typeof a.horaPago.toMillis === "function" ? a.horaPago.toMillis() : 0;
+      const tb = b.horaPago && typeof b.horaPago.toMillis === "function" ? b.horaPago.toMillis() : 0;
+      return tb - ta;
+    });
+
+    // 3. Renderizar
+    const hoyKey = getTodayKey();
+    let titulo = "📊 Ventas";
+    if (ventasSelection.type === "day") {
+      if (ventasSelection.key === hoyKey) titulo = "📊 Ventas de hoy";
+      else titulo = `📊 Ventas del ${formatDateKey(ventasSelection.key)}`;
+    } else {
+      const [y, m] = ventasSelection.key.split("-");
+      const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      titulo = `📊 Ventas de ${meses[parseInt(m) - 1]} ${y}`;
+    }
+    if (el.ventasScreenTitle) el.ventasScreenTitle.textContent = titulo;
+    if (el.ventasTotalLabel) el.ventasTotalLabel.textContent = "Total ventas";
+
     el.ventasList.innerHTML = "";
     if (filtradas.length === 0) {
       const empty = document.createElement("div");
       empty.className = "ventas-empty";
-      empty.textContent = "Aún no hay ventas registradas";
+      empty.textContent = "No hay ventas en esta fecha";
       el.ventasList.appendChild(empty);
     } else {
       filtradas.forEach((v) => {
         const esDom = v.tipoPedido === "domicilio";
         const esParaLlevar = v.tipoPedido === "paraLlevar";
-        let titulo = "";
-        if (esParaLlevar) titulo = "📦 " + escapeHtml(v.nombreCliente || "Para llevar");
-        else if (esDom) titulo = "🛵 " + escapeHtml(v.nombreCliente || "Domicilio");
-        else titulo = "🍽️ Mesa " + escapeHtml(v.mesa);
+        let tituloItem = "";
+        if (esParaLlevar) tituloItem = "📦 " + escapeHtml(v.nombreCliente || "Para llevar");
+        else if (esDom) tituloItem = "🛵 " + escapeHtml(v.nombreCliente || "Domicilio");
+        else tituloItem = "🍽️ Mesa " + escapeHtml(v.mesa);
         const item = document.createElement("div");
         item.className = "venta-item";
         const fecha = v.horaPago ? horaTexto(v.horaPago) : (v.hora ? horaTexto(v.hora) : "");
-        item.innerHTML = `<div><div class="venta-title">${titulo}</div><div class="venta-sub">${fecha} · ${escapeHtml(v.metodoPago || "Sin método")}</div></div><div class="venta-total">${formatCOP(v.total)}</div>`;
+        item.innerHTML = `<div><div class="venta-title">${tituloItem}</div><div class="venta-sub">${fecha} · ${escapeHtml(v.metodoPago || "Sin método")}</div></div><div class="venta-total">${formatCOP(v.total)}</div>`;
         el.ventasList.appendChild(item);
       });
     }
+
     const total = filtradas.reduce((sum, v) => sum + (v.total || 0), 0);
     el.ventasTotalHoy.textContent = formatCOP(total);
     el.ventasCountHoy.textContent = filtradas.length === 1 ? "1 venta" : filtradas.length + " ventas";
@@ -815,22 +867,62 @@
   }
 
   function renderVentasDaysPanel(ventas) {
+    const hoyKey = getTodayKey();
     el.ventasDaysList.innerHTML = "";
-    const hoyKey = dayKeyOf(new Date());
-    const hoyVentas = ventas.filter((v) => {
+
+    // Botón "Hoy"
+    const hoyVentas = ventas.filter(v => {
       const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
       return dayKeyOf(fecha) === hoyKey;
     });
     const totalHoy = hoyVentas.reduce((s, v) => s + (v.total || 0), 0);
-    const btn = document.createElement("button");
-    btn.className = "ventas-day-btn active";
-    btn.innerHTML = `<span>Hoy</span><span class="venta-day-sub">${formatCOP(totalHoy)}</span>`;
-    el.ventasDaysList.appendChild(btn);
+    const btnHoy = document.createElement("button");
+    btnHoy.className = "ventas-day-btn" + (ventasSelection.type === "day" && ventasSelection.key === hoyKey ? " active" : "");
+    btnHoy.innerHTML = `<span>Hoy</span><span class="venta-day-sub">${formatCOP(totalHoy)}</span>`;
+    btnHoy.addEventListener("click", () => {
+      ventasSelection = { type: "day", key: hoyKey };
+      renderVentasDaysPanel(ventas);
+      renderVentas(ventas);
+    });
+    el.ventasDaysList.appendChild(btnHoy);
 
-    const mesKey = hoyKey.slice(0, 7);
-    const mesVentas = ventas.filter((v) => {
+    // Agrupar por día (mostrar los últimos 30 días con ventas)
+    const daysMap = new Map();
+    ventas.forEach(v => {
       const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
-      return dayKeyOf(fecha).startsWith(mesKey);
+      const key = dayKeyOf(fecha);
+      if (!daysMap.has(key)) daysMap.set(key, { total: 0, count: 0 });
+      const entry = daysMap.get(key);
+      entry.total += v.total || 0;
+      entry.count += 1;
+    });
+
+    // Ordenar de más reciente a más antiguo
+    const sortedDays = Array.from(daysMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+
+    // Mostrar solo los días que no sean hoy (máximo 10)
+    let count = 0;
+    for (const [key, data] of sortedDays) {
+      if (key === hoyKey) continue;
+      if (count > 9) break;
+      const btn = document.createElement("button");
+      btn.className = "ventas-day-btn" + (ventasSelection.type === "day" && ventasSelection.key === key ? " active" : "");
+      const label = formatDateKey(key);
+      btn.innerHTML = `<span>${label}</span><span class="venta-day-sub">${formatCOP(data.total)}</span>`;
+      btn.addEventListener("click", () => {
+        ventasSelection = { type: "day", key: key };
+        renderVentasDaysPanel(ventas);
+        renderVentas(ventas);
+      });
+      el.ventasDaysList.appendChild(btn);
+      count++;
+    }
+
+    // Botón "Este mes"
+    const mesKey = hoyKey.slice(0, 7);
+    const mesVentas = ventas.filter(v => {
+      const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+      return monthKeyOf(fecha) === mesKey;
     });
     const totalMes = mesVentas.reduce((s, v) => s + (v.total || 0), 0);
     const monthLabel = document.createElement("div");
@@ -838,8 +930,13 @@
     monthLabel.textContent = "Este mes";
     el.ventasDaysList.appendChild(monthLabel);
     const monthBtn = document.createElement("button");
-    monthBtn.className = "ventas-month-btn";
+    monthBtn.className = "ventas-month-btn" + (ventasSelection.type === "month" && ventasSelection.key === mesKey ? " active" : "");
     monthBtn.innerHTML = `<span>Total</span><span>${formatCOP(totalMes)}</span>`;
+    monthBtn.addEventListener("click", () => {
+      ventasSelection = { type: "month", key: mesKey };
+      renderVentasDaysPanel(ventas);
+      renderVentas(ventas);
+    });
     el.ventasDaysList.appendChild(monthBtn);
   }
 
@@ -922,7 +1019,9 @@
     openModal(el.screenEntregados);
   });
 
+  // Al abrir Ventas, seleccionamos HOY y recargamos
   el.btnVentas.addEventListener("click", async () => {
+    ventasSelection = { type: "day", key: getTodayKey() };
     const ventas = await cargarVentasDirectas();
     renderVentasDaysPanel(ventas);
     openModal(el.screenVentas);
@@ -967,6 +1066,8 @@
 
         if (typeof window.PedidosCocina.escucharVentasHoy === 'function') {
           window.PedidosCocina.escucharVentasHoy((ventas) => {
+            lastVentasRaw = ventas;
+            // Solo actualizar si la pantalla de ventas está abierta, o almacenar en cache
             renderVentas(ventas);
             renderVentasDaysPanel(ventas);
           }, (err) => console.error("Error ventas:", err));
