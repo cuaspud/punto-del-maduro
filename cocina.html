@@ -21,6 +21,8 @@
     --green-deep: #17924C;
     --blue: #2D6CDF;
     --blue-deep: #1E52B8;
+    --purple: #7B2FBE;
+    --purple-deep: #5B1F8E;
     --radius-lg: 26px;
     --radius-md: 18px;
     --shadow-card: 0 6px 18px rgba(26, 21, 18, 0.08);
@@ -61,7 +63,6 @@
   .kitchen-top h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.4px; }
   .kitchen-top .status { font-size: 13px; font-weight: 700; color: var(--yellow); }
 
-  /* ===== FIX PARA TABLET: FORZAR NOWRAP Y SCROLL ===== */
   .kitchen-cols {
     flex: 1;
     display: flex;
@@ -136,6 +137,9 @@
     padding: 14px 22px;
     border-top: 2px solid var(--gray-line);
     background: rgba(31, 174, 92, 0.08);
+    color: var(--green-deep);
+    font-weight: 800;
+    font-size: 14px;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -160,6 +164,7 @@
 
   .order-card.tipo-mesa { border-color: var(--yellow); }
   .order-card.tipo-domicilio { border-color: var(--green); }
+  .order-card.tipo-llevar { border-color: var(--purple); } /* 🔥 NUEVO: color para llevar */
 
   .card-head {
     padding: 12px 16px;
@@ -172,6 +177,7 @@
   }
   .tipo-mesa .card-head { background: rgba(255, 199, 44, 0.2); color: #8A6400; }
   .tipo-domicilio .card-head { background: rgba(31, 174, 92, 0.16); color: var(--green-deep); }
+  .tipo-llevar .card-head { background: rgba(123, 47, 190, 0.16); color: var(--purple-deep); } /* 🔥 color para llevar */
 
   .card-time { font-size: 11px; font-weight: 700; opacity: 0.75; white-space: nowrap; text-align: right; }
 
@@ -384,20 +390,43 @@
   }
 
   function buildCard(pedido, estado) {
+    // 🔥 DETECTAR TIPO DE PEDIDO
     const esDomicilio = pedido.tipoPedido === "domicilio";
+    const esParaLlevar = pedido.tipoPedido === "paraLlevar";
+    const esMesa = !esDomicilio && !esParaLlevar;
+
+    // 🔥 ASIGNAR CLASE CSS
+    let tipoClase = "tipo-mesa";
+    let tipoColor = "var(--yellow)";
+    if (esDomicilio) {
+      tipoClase = "tipo-domicilio";
+      tipoColor = "var(--green)";
+    } else if (esParaLlevar) {
+      tipoClase = "tipo-llevar";
+      tipoColor = "var(--purple)";
+    }
+
     const wrap = document.createElement("div");
-    wrap.className = "order-card " + (esDomicilio ? "tipo-domicilio" : "tipo-mesa");
+    wrap.className = "order-card " + tipoClase;
 
-    const titulo = esDomicilio
-      ? `🛵 ${escapeHtml(pedido.nombreCliente || "Domicilio")}`
-      : `🍽️ Mesa ${escapeHtml(pedido.mesa)}`;
+    // 🔥 TÍTULO SEGÚN TIPO
+    let titulo = "";
+    if (esParaLlevar) {
+      titulo = `📦 LLEVAR ${escapeHtml(pedido.nombreCliente || "")}`;
+    } else if (esDomicilio) {
+      titulo = `🛵 ${escapeHtml(pedido.nombreCliente || "Domicilio")}`;
+    } else {
+      titulo = `🍽️ Mesa ${escapeHtml(pedido.mesa)}`;
+    }
 
-    const clienteHtml = esDomicilio
-      ? `<div class="card-client">
+    // 🔥 CLIENTE (para domicilio y para llevar)
+    let clienteHtml = "";
+    if (esDomicilio || esParaLlevar) {
+      clienteHtml = `<div class="card-client">
            <strong>📍 ${escapeHtml(pedido.direccion || "")}</strong><br>
            ☎ ${escapeHtml(pedido.telefono || "")}
-         </div>`
-      : "";
+         </div>`;
+    }
 
     const productosHtml = (pedido.productos || []).map((p) => {
       const exc = (p.excepciones && p.excepciones.length)
@@ -498,7 +527,6 @@
   function renderEntregadosHoy() {
     const deHoy = lastEntregadosRaw.filter(esHoy);
     render(colEntregados, countEntregados, deHoy, "entregado", "No hay pedidos entregados");
-    // Ya no actualizamos totalVendidoHoy porque lo eliminamos
   }
 
   escucharEntregados((pedidos) => {
@@ -541,13 +569,11 @@
       const batch = writeBatch(db);
       pedidosHoy.forEach((p) => {
         const ref = doc(db, "pedidosCocina", p.id);
-        // 🔥 CLAVE: ARCHIVAMOS (cambiamos estado a "archivado")
         batch.update(ref, { estado: "archivado" });
       });
 
       await batch.commit();
 
-      // Actualizamos la lista local eliminando los archivados
       lastEntregadosRaw = lastEntregadosRaw.filter(p => !esHoy(p));
       renderEntregadosHoy();
       alert("✅ ¡Pedidos del día archivados exitosamente! (Siguen en Ventas)");
