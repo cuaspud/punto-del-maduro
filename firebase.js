@@ -1,7 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   firebase.js
-   Conexión con Firebase Firestore (tiempo real).
+   firebase.js (con pagos sin serverTimestamp en arrays)
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -18,13 +17,10 @@ import {
   orderBy,
   serverTimestamp,
   writeBatch,
-  getDoc, // <--- necesario para pagos parciales
+  getDoc,
   setDoc,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-/* ---------------------------------------------------------
-   CONFIGURACIÓN — credenciales
---------------------------------------------------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyCqDEkTFudWGaMu1yjHkvutsHCtrPzyIek",
   authDomain: "punto-del-maduro.firebaseapp.com",
@@ -37,42 +33,28 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Asignación global para compatibilidad con script.js
 window.firebaseApp = app;
 window.db = db;
 
 const PEDIDOS_COL = "pedidosCocina";
-const CARRITOS_COL = "carritos"; // <--- NUEVA COLECCIÓN PARA SINCRONIZACIÓN
+const CARRITOS_COL = "carritos";
 const pedidosRef = collection(db, PEDIDOS_COL);
 const carritosRef = collection(db, CARRITOS_COL);
 
 /* ---------------------------------------------------------
-   ENVIAR PEDIDO A COCINA
---------------------------------------------------------- */
-export async function enviarPedido(pedido) {
-  return addDoc(pedidosRef, {
-    ...pedido,
-    pagado: false,
-    pagos: [],
-    hora: serverTimestamp(),
-  });
-}
-
-/* ---------------------------------------------------------
    CARRITOS (SINCRONIZACIÓN EN TIEMPO REAL)
 --------------------------------------------------------- */
-
-// Guardar carrito (items) de una mesa/domicilio
 export async function guardarCarrito(key, items) {
+  console.log(`💾 Guardando carrito para ${key}:`, items);
   const ref = doc(db, CARRITOS_COL, key);
   await setDoc(ref, {
     key,
-    items,
+    items: items || [],
     updatedAt: serverTimestamp(),
   }, { merge: true });
+  console.log(`✅ Carrito guardado para ${key}`);
 }
 
-// Obtener carrito actual (para sincronización inicial)
 export async function obtenerCarrito(key) {
   const ref = doc(db, CARRITOS_COL, key);
   const snap = await getDoc(ref);
@@ -82,23 +64,41 @@ export async function obtenerCarrito(key) {
   return [];
 }
 
-// Escuchar cambios en un carrito específico
 export function escucharCarrito(key, callback, onError) {
+  console.log(`🔔 Suscribiendo a carrito: ${key}`);
   const ref = doc(db, CARRITOS_COL, key);
   return onSnapshot(ref, (snap) => {
     if (snap.exists()) {
       const data = snap.data();
+      console.log(`📥 Datos recibidos para ${key}:`, data.items);
       callback(data.items || []);
     } else {
+      console.log(`📭 Carrito vacío para ${key}`);
       callback([]);
     }
-  }, onError);
+  }, (err) => {
+    console.error(`❌ Error en listener de carrito ${key}:`, err);
+    if (onError) onError(err);
+  });
 }
 
-// Eliminar carrito (cuando se cobra o se reinicia)
 export async function eliminarCarrito(key) {
+  console.log(`🗑️ Eliminando carrito: ${key}`);
   const ref = doc(db, CARRITOS_COL, key);
   await deleteDoc(ref);
+}
+
+/* ---------------------------------------------------------
+   ENVIAR PEDIDO A COCINA
+--------------------------------------------------------- */
+export async function enviarPedido(pedido) {
+  console.log("📦 Enviando pedido a cocina:", pedido);
+  return addDoc(pedidosRef, {
+    ...pedido,
+    pagado: false,
+    pagos: [],
+    hora: serverTimestamp(),
+  });
 }
 
 /* ---------------------------------------------------------
@@ -137,7 +137,6 @@ export function escucharVentasHoy(callback, onError) {
     const ventas = [];
     snap.forEach((d) => {
       const data = d.data();
-      // Si tiene pagos, desglosamos
       if (data.pagos && data.pagos.length > 0) {
         data.pagos.forEach(pago => {
           ventas.push({
@@ -149,7 +148,6 @@ export function escucharVentasHoy(callback, onError) {
           });
         });
       } else {
-        // Caso antiguo (un solo pago)
         ventas.push({ id: d.id, ...data });
       }
     });
@@ -163,7 +161,7 @@ export function escucharVentasHoy(callback, onError) {
 }
 
 /* ---------------------------------------------------------
-   ACCIONES DE COCINA Y EDICIÓN
+   ACCIONES DE COCINA
 --------------------------------------------------------- */
 export function marcarPreparado(id) {
   return updateDoc(doc(db, PEDIDOS_COL, id), { estado: "listo" });
@@ -179,11 +177,10 @@ export function eliminarPedido(id) {
 }
 
 /* ---------------------------------------------------------
-   PAGOS PARCIALES
+   PAGOS PARCIALES (CORREGIDO: SIN serverTimestamp EN ARRAYS)
 --------------------------------------------------------- */
 export async function registrarPagoParcial(id, metodo, monto) {
   if (!id || !metodo || monto <= 0) return;
-
   const docRef = doc(db, PEDIDOS_COL, id);
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) throw new Error("Pedido no encontrado");
@@ -192,52 +189,27 @@ export async function registrarPagoParcial(id, metodo, monto) {
   const total = data.total || 0;
   const pagos = data.pagos || [];
 
+  // Crear nuevo pago con timestamp numérico (NO usar serverTimestamp dentro del array)
   const nuevoPago = {
     metodo,
     monto,
-    horaPago: serverTimestamp()
+    horaPago: new Date().toISOString(), // timestamp como string ISO (o puedes usar Date.now())
   };
   pagos.push(nuevoPago);
 
   const totalPagado = pagos.reduce((sum, p) => sum + p.monto, 0);
   const pagado = totalPagado >= total;
 
+  // Actualizar documento: pagos array, pagado, y horaPago del documento con serverTimestamp
   await updateDoc(docRef, {
     pagos: pagos,
     pagado: pagado,
-    horaPago: serverTimestamp()
+    horaPago: serverTimestamp(), // solo aquí usamos serverTimestamp
   });
 
   return { pagos, pagado, totalPagado };
 }
 
-/* ---------------------------------------------------------
-   COBRAR (para compatibilidad con pagos únicos)
---------------------------------------------------------- */
-export async function cobrarPedidos(ids, metodoPago) {
-  if (!ids || ids.length === 0) return;
-  const batch = writeBatch(db);
-  ids.forEach((id) => {
-    if (id) {
-      batch.set(
-        doc(db, PEDIDOS_COL, id),
-        {
-          pagado: true,
-          metodoPago,
-          pagos: [{ metodo: metodoPago, monto: 0, horaPago: serverTimestamp() }],
-          estado: "entregado",
-          horaPago: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
-  });
-  return batch.commit();
-}
-
-/* ---------------------------------------------------------
-   ESCUCHAR LISTOS PARA MESERO
---------------------------------------------------------- */
 export function escucharListosParaMesero(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "listo"));
   return onSnapshot(q, (snap) => {
@@ -260,7 +232,6 @@ window.PedidosCocina = {
   marcarPreparado,
   marcarEntregado,
   eliminarPedido,
-  cobrarPedidos,
   registrarPagoParcial,
   guardarCarrito,
   obtenerCarrito,
