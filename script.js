@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con sincronización en tiempo real y pagos divididos)
+   script.js (con sincronización completa de carrito y pedidos)
    ========================================================= */
 
 (function () {
@@ -60,13 +60,14 @@
   let state = {
     currentKey: "mesa_1",
     currentCategory: "Maduros",
-    orders: {},
-    sentPedidos: {},
+    orders: {},      // carrito por clave (se sincroniza con Firebase)
+    sentPedidos: {}, // pedidos en cocina por clave (se sincroniza con Firebase)
     orderInfo: {},
     takeoutCounter: 0,
     deliveryCounter: 0
   };
 
+  // Inicializar mesas
   for (let i = 1; i <= TABLE_COUNT; i++) {
     const key = `mesa_${i}`;
     state.orders[key] = [];
@@ -76,11 +77,11 @@
   state.sentPedidos.paraLlevar = [];
 
   let excEditingItemId = null;
-  let selectedPayMethod = null;
-  let carritoUnsubscribe = null;
+  let carritoUnsubscribe = null; // listener del carrito actual
+  let pedidosUnsubscribe = null; // listener de pedidos pendientes/listos/entregados
 
   /* ---------------------------------------------------------
-     PERSISTENCIA
+     PERSISTENCIA (solo para datos no críticos)
   --------------------------------------------------------- */
   function saveState() {
     try {
@@ -235,7 +236,7 @@
   };
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DEL CARRITO CON FIRESTORE
+     SINCRONIZACIÓN DEL CARRITO (Firestore)
   --------------------------------------------------------- */
   function suscribirCarrito(key) {
     if (carritoUnsubscribe) {
@@ -249,7 +250,7 @@
     }
     console.log(`🔔 Suscribiendo a carrito: ${key}`);
     carritoUnsubscribe = window.PedidosCocina.escucharCarrito(key, (items) => {
-      console.log(`📥 Actualizando UI para ${key} con`, items);
+      console.log(`📥 Carrito actualizado para ${key}:`, items);
       state.orders[key] = items || [];
       renderOrder();
       renderProducts();
@@ -262,12 +263,13 @@
 
   async function guardarCarritoRemoto(key, items) {
     if (!window.PedidosCocina || typeof window.PedidosCocina.guardarCarrito !== "function") {
-      console.warn("⏳ Firebase no listo para guardar carrito, reintentando en 1s...");
+      console.warn("⏳ Firebase no listo para guardar carrito, reintentando...");
       setTimeout(() => guardarCarritoRemoto(key, items), 1000);
       return;
     }
     try {
       await window.PedidosCocina.guardarCarrito(key, items);
+      console.log(`✅ Carrito guardado para ${key}`);
     } catch (e) {
       console.error("Error guardando carrito:", e);
       setTimeout(() => guardarCarritoRemoto(key, items), 3000);
@@ -278,13 +280,115 @@
     if (!window.PedidosCocina || typeof window.PedidosCocina.eliminarCarrito !== "function") return;
     try {
       await window.PedidosCocina.eliminarCarrito(key);
+      console.log(`🗑️ Carrito eliminado: ${key}`);
     } catch (e) {
       console.error("Error eliminando carrito:", e);
     }
   }
 
   /* ---------------------------------------------------------
-     RENDER DE MESAS Y PESTAÑAS
+     SINCRONIZACIÓN DE PEDIDOS EN COCINA (Firestore)
+  --------------------------------------------------------- */
+  function suscribirPedidos() {
+    if (pedidosUnsubscribe) {
+      pedidosUnsubscribe();
+      pedidosUnsubscribe = null;
+    }
+    if (!window.PedidosCocina || typeof window.PedidosCocina.escucharPendientes !== "function") {
+      console.warn("⏳ Firebase no listo para escuchar pedidos, reintentando...");
+      setTimeout(suscribirPedidos, 1000);
+      return;
+    }
+
+    // Escuchar pendientes, listos y entregados
+    const pendientesUnsub = window.PedidosCocina.escucharPendientes((pedidos) => {
+      console.log("📥 Pedidos pendientes recibidos:", pedidos.length);
+      actualizarSentPedidos(pedidos, "pendiente");
+    }, (err) => console.error("Error pendientes:", err));
+
+    const listosUnsub = window.PedidosCocina.escucharListos((pedidos) => {
+      console.log("📥 Pedidos listos recibidos:", pedidos.length);
+      actualizarSentPedidos(pedidos, "listo");
+    }, (err) => console.error("Error listos:", err));
+
+    const entregadosUnsub = window.PedidosCocina.escucharEntregados((pedidos) => {
+      console.log("📥 Pedidos entregados recibidos:", pedidos.length);
+      actualizarSentPedidos(pedidos, "entregado");
+    }, (err) => console.error("Error entregados:", err));
+
+    // Función para unificar
+    pedidosUnsubscribe = () => {
+      pendientesUnsub();
+      listosUnsub();
+      entregadosUnsub();
+    };
+  }
+
+  function actualizarSentPedidos(pedidos, estado) {
+    // Limpiar sentPedidos para todas las claves
+    const keys = Object.keys(state.sentPedidos);
+    keys.forEach(k => {
+      state.sentPedidos[k] = state.sentPedidos[k].filter(p => p.estado !== estado);
+    });
+
+    // Agrupar pedidos por clave
+    pedidos.forEach(p => {
+      let key = null;
+      if (p.tipoPedido === 'mesa' && p.mesa) {
+        key = `mesa_${p.mesa}`;
+      } else if (p.tipoPedido === 'domicilio' && p.nombreCliente) {
+        // Para domicilios, usamos la clave 'domicilio' si coincide con el actual, o la guardamos en un array genérico
+        // Mejor buscar la clave real: si tenemos orderInfo con nombre igual, usamos esa clave
+        const possibleKeys = Object.keys(state.orderInfo).filter(k => k.startsWith('domicilio_') && state.orderInfo[k].nombre === p.nombreCliente);
+        if (possibleKeys.length > 0) {
+          key = possibleKeys[0];
+        } else {
+          key = 'domicilio'; // fallback
+        }
+      } else if (p.tipoPedido === 'paraLlevar' && p.nombreCliente) {
+        const possibleKeys = Object.keys(state.orderInfo).filter(k => k.startsWith('llevar_') && state.orderInfo[k].nombre === p.nombreCliente);
+        if (possibleKeys.length > 0) {
+          key = possibleKeys[0];
+        } else {
+          key = 'paraLlevar'; // fallback
+        }
+      }
+
+      if (key && state.sentPedidos[key]) {
+        // Verificar si ya existe
+        const exists = state.sentPedidos[key].some(sp => sp.id === p.id);
+        if (!exists) {
+          state.sentPedidos[key].push({
+            id: p.id,
+            total: p.total,
+            productos: p.productos,
+            estado: p.estado,
+            hora: p.hora
+          });
+        } else {
+          // Actualizar estado si cambió
+          const existing = state.sentPedidos[key].find(sp => sp.id === p.id);
+          if (existing) existing.estado = p.estado;
+        }
+      }
+    });
+
+    // Ordenar por hora
+    keys.forEach(k => {
+      state.sentPedidos[k].sort((a, b) => {
+        const ta = a.hora && a.hora.toMillis ? a.hora.toMillis() : 0;
+        const tb = b.hora && b.hora.toMillis ? b.hora.toMillis() : 0;
+        return ta - tb;
+      });
+    });
+
+    // Renderizar UI
+    renderOrder();
+    renderTables();
+  }
+
+  /* ---------------------------------------------------------
+     RENDER DE MESAS Y PESTAÑAS DINÁMICAS
   --------------------------------------------------------- */
   function renderTables() {
     el.tablesBar.innerHTML = "";
@@ -305,7 +409,7 @@
       el.tablesBar.appendChild(btn);
     }
 
-    // Para llevar activos
+    // Para llevar
     Object.keys(state.orders).filter(k => k.startsWith("llevar_")).forEach((key) => {
       const info = state.orderInfo[key] || {};
       const label = info.nombre || ("LLEVAR " + key.replace("llevar_", ""));
@@ -327,7 +431,7 @@
     btnNuevoLlevar.addEventListener("click", crearPedidoParaLlevar);
     el.tablesBar.appendChild(btnNuevoLlevar);
 
-    // Domicilios activos
+    // Domicilios
     Object.keys(state.orders).filter(k => k.startsWith("domicilio_")).forEach((key) => {
       const info = state.orderInfo[key] || {};
       const label = info.nombre ? info.nombre : ("DOM " + key.replace("domicilio_", ""));
@@ -406,7 +510,7 @@
   }
 
   /* ---------------------------------------------------------
-     CATEGORÍAS Y PRODUCTOS
+     RENDER: CATEGORÍAS
   --------------------------------------------------------- */
   function renderCategories() {
     el.categories.innerHTML = "";
@@ -424,6 +528,9 @@
     });
   }
 
+  /* ---------------------------------------------------------
+     RENDER: PRODUCTOS
+  --------------------------------------------------------- */
   function renderProducts() {
     el.productsGrid.innerHTML = "";
     const order = currentOrder();
@@ -488,6 +595,7 @@
     const key = state.currentKey;
     const order = currentOrder();
 
+    // Título
     if (key.startsWith("domicilio_")) {
       const info = state.orderInfo[key] || {};
       el.orderTableTitle.innerHTML = "🛵 " + escapeHtml(info.nombre || "Domicilio") + '<span class="order-client-sub">' + escapeHtml(info.direccion || "") + "</span>";
@@ -502,6 +610,7 @@
     const count = orderItemCount(order);
     el.orderCount.textContent = count === 1 ? "1 producto nuevo" : count + " productos nuevos";
 
+    // BANNER de pedidos en cocina
     const sentList = state.sentPedidos[key] || [];
     if (sentList.length > 0) {
       el.orderSentBanner.innerHTML = "";
@@ -522,14 +631,16 @@
         itemRow.style.background = "#ffffff";
         itemRow.style.borderRadius = "8px";
         itemRow.style.fontSize = "12px";
+        const estadoTexto = sp.estado === 'pendiente' ? '⏳' : sp.estado === 'listo' ? '✅' : '📦';
         itemRow.innerHTML = `
           <div style="flex:1; color: var(--black); font-weight:700;">
-            Pedido #${idx + 1}: ${formatCOP(sp.total)}
+            ${estadoTexto} Pedido #${idx + 1}: ${formatCOP(sp.total)}
           </div>
-          <button class="btn-edit-sent" style="background:#FFF3DB; color:var(--orange-deep); border:none; padding:4px 8px; border-radius:6px; font-weight:700; cursor:pointer;" title="Devolver para editar">✏️ Editar</button>
+          ${sp.estado === 'pendiente' ? `<button class="btn-edit-sent" style="background:#FFF3DB; color:var(--orange-deep); border:none; padding:4px 8px; border-radius:6px; font-weight:700; cursor:pointer;" title="Devolver para editar">✏️ Editar</button>` : ''}
           <button class="btn-delete-sent" style="background:#FCE9E6; color:var(--red); border:none; padding:4px 8px; border-radius:6px; font-weight:700; cursor:pointer;" title="Borrar de la cocina">🗑️ Borrar</button>
         `;
-        itemRow.querySelector(".btn-edit-sent").addEventListener("click", () => editarPedidoEnviado(key, idx));
+        const editBtn = itemRow.querySelector(".btn-edit-sent");
+        if (editBtn) editBtn.addEventListener("click", () => editarPedidoEnviado(key, idx));
         itemRow.querySelector(".btn-delete-sent").addEventListener("click", () => borrarPedidoEnviado(key, idx));
         el.orderSentBanner.appendChild(itemRow);
       });
@@ -538,6 +649,7 @@
       el.orderSentBanner.innerHTML = "";
     }
 
+    // Lista de productos del carrito
     Array.from(el.orderList.children).forEach((child) => { if (child.id !== "orderEmpty") child.remove(); });
     if (order.length === 0) {
       el.orderEmpty.style.display = "flex";
@@ -615,7 +727,9 @@
     pagoTotal = owed;
     pagoPendiente = owed;
 
+    // Obtener el primer ID de pedido en cocina (el que aún no está pagado)
     const sentList = state.sentPedidos[pagoKey] || [];
+    // Buscar un pedido que no esté pagado (en Firestore)
     pedidoIdParaPago = sentList.length > 0 ? sentList[0].id : null;
 
     if (!pedidoIdParaPago) {
@@ -658,7 +772,7 @@
 
     try {
       const result = await window.PedidosCocina.registrarPagoParcial(pedidoIdParaPago, metodo, monto);
-      
+
       const container = document.getElementById("pagosRegistrados");
       const row = document.createElement("div");
       row.style.cssText = "display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; font-size:14px;";
@@ -701,7 +815,7 @@
   }
 
   /* ---------------------------------------------------------
-     ENVIAR A COCINA
+     ENVIAR A COCINA (con guardado de carrito y clave)
   --------------------------------------------------------- */
   async function sendToKitchen() {
     const key = state.currentKey;
@@ -734,20 +848,24 @@
       observaciones: (isDelivery || isTakeout) ? (info.observaciones || "") : "",
       total: orderTotal(order),
       estado: "pendiente",
+      // 🔥 CLAVE: guardamos la clave para saber a qué mesa/domicilio pertenece
+      clave: key,
     };
 
     el.btnKitchen.disabled = true;
     try {
       const ref = await window.PedidosCocina.enviarPedido(pedido);
+      // Agregar a sentPedidos local (el listener de Firebase también lo hará)
       if (!state.sentPedidos[key]) state.sentPedidos[key] = [];
-      state.sentPedidos[key].push({ id: ref.id, total: pedido.total, productos: productos });
+      state.sentPedidos[key].push({ id: ref.id, total: pedido.total, productos: productos, estado: "pendiente" });
+      // Limpiar carrito local y remoto
       state.orders[key] = [];
       await eliminarCarritoRemoto(key);
       saveState();
       renderTables();
       renderProducts();
       renderOrder();
-      showToast("Pedido enviado a cocina 🚀 · Ya está en la cuenta para cobrar");
+      showToast("Pedido enviado a cocina 🚀");
     } catch (err) {
       console.error(err);
       showToast("No se pudo enviar el pedido.");
@@ -816,7 +934,7 @@
   }
 
   /* ---------------------------------------------------------
-     VENTAS
+     VENTAS — CARGA DIRECTA Y RENDER
   --------------------------------------------------------- */
   let ventasSelection = { type: "day", key: getTodayKey() };
   let lastVentasRaw = [];
@@ -1058,7 +1176,7 @@
   }
 
   /* ---------------------------------------------------------
-     SELECCIÓN DE MESA (pantalla)
+     SELECTOR DE MESA
   --------------------------------------------------------- */
   function renderSelectTableGrid() {
     el.selectTableGrid.innerHTML = "";
@@ -1082,51 +1200,7 @@
   }
 
   /* ---------------------------------------------------------
-     EVENTOS GLOBALES
-  --------------------------------------------------------- */
-  el.btnCharge.addEventListener("click", openPaymentModal);
-  el.btnNewOrder.addEventListener("click", openOrderTypeScreen);
-  el.btnSaveExceptions.addEventListener("click", saveExceptions);
-  el.btnKitchen.addEventListener("click", sendToKitchen);
-  el.btnOrderType.addEventListener("click", openOrderTypeScreen);
-  el.btnPickMesa.addEventListener("click", () => {
-    closeModal(el.screenOrderType);
-    openModal(el.screenSelectTable);
-  });
-  el.btnPickDomicilio.addEventListener("click", abrirModalNuevoDomicilio);
-  el.btnSaveDomicilio.addEventListener("click", saveDomicilio);
-
-  el.btnEntregados.addEventListener("click", () => {
-    openModal(el.screenEntregados);
-  });
-
-  el.btnVentas.addEventListener("click", async () => {
-    ventasSelection = { type: "day", key: getTodayKey() };
-    const ventas = await cargarVentasDirectas();
-    renderVentasDaysPanel(ventas);
-    openModal(el.screenVentas);
-  });
-
-  if (el.btnRecargarVentas) {
-    el.btnRecargarVentas.addEventListener("click", async () => {
-      showToast("🔄 Actualizando ventas...");
-      const ventas = await cargarVentasDirectas();
-      renderVentasDaysPanel(ventas);
-      showToast("✅ Ventas actualizadas");
-    });
-  }
-
-  el.btnAgregarPago.addEventListener("click", agregarPagoParcial);
-  el.btnFinalizarPago.addEventListener("click", finalizarPago);
-  el.inputMontoPago.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      el.btnAgregarPago.click();
-    }
-  });
-
-  /* ---------------------------------------------------------
-     ENTREGADOS
+     ENTREGADOS (historial)
   --------------------------------------------------------- */
   function renderEntregados(pedidos) {
     const ordenados = pedidos.slice().reverse();
@@ -1155,10 +1229,54 @@
   }
 
   /* ---------------------------------------------------------
+     EVENTOS GLOBALES
+  --------------------------------------------------------- */
+  el.btnCharge.addEventListener("click", openPaymentModal);
+  el.btnNewOrder.addEventListener("click", openOrderTypeScreen);
+  el.btnSaveExceptions.addEventListener("click", saveExceptions);
+  el.btnKitchen.addEventListener("click", sendToKitchen);
+  el.btnOrderType.addEventListener("click", openOrderTypeScreen);
+  el.btnPickMesa.addEventListener("click", () => {
+    closeModal(el.screenOrderType);
+    openModal(el.screenSelectTable);
+  });
+  el.btnPickDomicilio.addEventListener("click", abrirModalNuevoDomicilio);
+  el.btnSaveDomicilio.addEventListener("click", saveDomicilio);
+  el.btnEntregados.addEventListener("click", () => {
+    openModal(el.screenEntregados);
+  });
+  el.btnVentas.addEventListener("click", async () => {
+    ventasSelection = { type: "day", key: getTodayKey() };
+    const ventas = await cargarVentasDirectas();
+    renderVentasDaysPanel(ventas);
+    openModal(el.screenVentas);
+  });
+  if (el.btnRecargarVentas) {
+    el.btnRecargarVentas.addEventListener("click", async () => {
+      showToast("🔄 Actualizando ventas...");
+      const ventas = await cargarVentasDirectas();
+      renderVentasDaysPanel(ventas);
+      showToast("✅ Ventas actualizadas");
+    });
+  }
+
+  // Eventos para pagos divididos
+  el.btnAgregarPago.addEventListener("click", agregarPagoParcial);
+  el.btnFinalizarPago.addEventListener("click", finalizarPago);
+  el.inputMontoPago.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el.btnAgregarPago.click();
+    }
+  });
+
+  /* ---------------------------------------------------------
      INIT
   --------------------------------------------------------- */
   function init() {
     loadState();
+
+    // Inicializar estructuras
     for (let i = 1; i <= TABLE_COUNT; i++) {
       const key = `mesa_${i}`;
       if (!state.orders[key]) state.orders[key] = [];
@@ -1173,16 +1291,23 @@
     renderOrder();
     renderSelectTableGrid();
 
+    // Suscribirse al carrito actual
     suscribirCarrito(state.currentKey);
 
+    // Iniciar listener de pedidos (para sincronizar sentPedidos)
     let intentos = 0;
     const maxIntentos = 20;
     function iniciarListeners() {
-      if (window.PedidosCocina && typeof window.PedidosCocina.escucharEntregados === 'function') {
-        console.log("✅ Firebase listo, iniciando listeners de cocina");
-        window.PedidosCocina.escucharEntregados((pedidos) => {
-          renderEntregados(pedidos);
-        }, (err) => console.error("Error entregados:", err));
+      if (window.PedidosCocina && typeof window.PedidosCocina.escucharPendientes === 'function') {
+        console.log("✅ Firebase listo, iniciando listeners de pedidos");
+        suscribirPedidos();
+
+        // También escuchar entregados para el historial
+        if (typeof window.PedidosCocina.escucharEntregados === 'function') {
+          window.PedidosCocina.escucharEntregados((pedidos) => {
+            renderEntregados(pedidos);
+          }, (err) => console.error("Error entregados:", err));
+        }
 
         if (typeof window.PedidosCocina.escucharVentasHoy === 'function') {
           window.PedidosCocina.escucharVentasHoy((ventas) => {
@@ -1204,6 +1329,7 @@
     }
     iniciarListeners();
 
+    // Carga inicial de ventas
     setTimeout(() => {
       if (window.firebaseApp) {
         cargarVentasDirectas();
