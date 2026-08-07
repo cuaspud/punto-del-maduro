@@ -61,8 +61,25 @@
   .kitchen-top h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.4px; }
   .kitchen-top .status { font-size: 13px; font-weight: 700; color: var(--yellow); }
 
-  .kitchen-cols { flex: 1; display: flex; min-height: 0; height: 100%; overflow: hidden; }
-  .kitchen-col { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; min-width: 0; }
+  /* ===== FIX PARA TABLET: FORZAR NOWRAP Y SCROLL ===== */
+  .kitchen-cols {
+    flex: 1;
+    display: flex;
+    flex-wrap: nowrap; /* Evita que las columnas se apilen */
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .kitchen-col {
+    flex: 1 1 0; /* Tamaño flexible pero equitativo */
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    min-width: 120px; /* Ancho mínimo para que no se compriman demasiado */
+  }
   .kitchen-col + .kitchen-col { border-left: 2px solid var(--gray-line); }
 
   .col-header {
@@ -95,7 +112,7 @@
   .col-body {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    overflow-y: auto; /* Scroll vertical */
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -229,6 +246,13 @@
     box-shadow: var(--shadow-lift);
     z-index: 10;
     opacity: 0.92;
+  }
+
+  /* Ajuste para pantallas pequeñas (tablets) */
+  @media (max-width: 900px) {
+    .kitchen-col { min-width: 100px; } /* Mantiene un ancho mínimo */
+    .col-header { font-size: 14px; padding: 12px 14px; }
+    .card-head { font-size: 13px; }
   }
 </style>
 </head>
@@ -496,62 +520,51 @@
     render(colListos, countListos, lastListos, "listo", "No hay pedidos listos");
     renderEntregadosHoy();
   }, 30000);
+
   // ------------------------------------------------
-  // BOTÓN: REINICIAR DÍA (Borrar solo entregados)
+  // BOTÓN: REINICIAR DÍA (ARCHIVAR en lugar de BORRAR)
   // ------------------------------------------------
   const btnLimpiarDia = document.getElementById("btnLimpiarDia");
 
   btnLimpiarDia.addEventListener("click", async () => {
-    // 1. Preguntar para que no sea un accidente
-    if (!confirm("¿Estás seguro de que quieres borrar TODOS los pedidos entregados de hoy? Esta acción no se puede deshacer.")) {
+    if (!confirm("¿Estás seguro de que quieres ARCHIVAR los pedidos entregados de hoy? Se ocultarán de la cocina pero permanecerán en ventas.")) {
       return;
     }
 
-    // 2. Deshabilitar el botón mientras borra
     btnLimpiarDia.disabled = true;
-    btnLimpiarDia.textContent = "Borrando...";
+    btnLimpiarDia.textContent = "Archivando...";
 
     try {
-      // 3. Obtener los IDs de los pedidos que están en la columna de entregados hoy
       const pedidosHoy = lastEntregadosRaw.filter(esHoy);
       
       if (pedidosHoy.length === 0) {
-        alert("No hay pedidos entregados hoy para borrar.");
+        alert("No hay pedidos entregados hoy para archivar.");
         btnLimpiarDia.disabled = false;
         btnLimpiarDia.textContent = "🗑️ Reiniciar día";
         return;
       }
 
-      // 4. Llamar a la función de firebase.js para borrar el lote
-      // NOTA: Como en firebase.js no teníamos una función para borrar en lote,
-      // la importaremos y la crearemos aquí mismo.
-      
-      // Importamos funciones necesarias si no las tienes ya
       const { getFirestore, writeBatch, doc } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
-      
-      // Usamos la instancia global de firebase que ya está iniciada
       const db = getFirestore(window.firebaseApp); 
       
-      // Creamos el lote para borrar
       const batch = writeBatch(db);
       pedidosHoy.forEach((p) => {
         const ref = doc(db, "pedidosCocina", p.id);
-        batch.delete(ref);
+        // 🔥 CAMBIO CLAVE: en lugar de delete, actualizamos el estado a "archivado"
+        batch.update(ref, { estado: "archivado" });
       });
 
-      // 5. Ejecutar el borrado
       await batch.commit();
 
-      // 6. Limpiar la lista local visualmente y actualizar contadores
+      // Actualizamos la lista local eliminando los archivados
       lastEntregadosRaw = lastEntregadosRaw.filter(p => !esHoy(p));
       renderEntregadosHoy();
-      alert("✅ ¡Pedidos del día borrados exitosamente!");
+      alert("✅ ¡Pedidos del día archivados exitosamente! (Siguen en Ventas)");
 
     } catch (error) {
-      console.error("Error al borrar el día:", error);
-      alert("Hubo un error al borrar los pedidos. Revisa la consola (F12).");
+      console.error("Error al archivar el día:", error);
+      alert("Hubo un error al archivar los pedidos. Revisa la consola.");
     } finally {
-      // 7. Reactivar el botón
       btnLimpiarDia.disabled = false;
       btnLimpiarDia.textContent = "🗑️ Reiniciar día";
     }
