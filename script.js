@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con botón Cancelar para llevar/domicilio)
+   script.js (con cancelación de pedidos dinámicos y pestañas siempre visibles)
    ========================================================= */
 
 (function () {
@@ -88,10 +88,8 @@
   --------------------------------------------------------- */
   function saveState() {
     try {
-      const dynamicKeys = Object.keys(state.orders).filter(k => 
-        (k.startsWith("llevar_") || k.startsWith("domicilio_")) &&
-        (state.orders[k].length > 0 || (state.sentPedidos[k] && state.sentPedidos[k].length > 0))
-      );
+      // Guardamos todas las claves dinámicas (incluso vacías) para que persistan
+      const dynamicKeys = Object.keys(state.orders).filter(k => k.startsWith("llevar_") || k.startsWith("domicilio_"));
       const dynamicOrderInfo = {};
       dynamicKeys.forEach(k => {
         if (state.orderInfo[k]) {
@@ -386,7 +384,7 @@
   }
 
   /* ---------------------------------------------------------
-     RENDER DE MESAS Y PESTAÑAS DINÁMICAS
+     RENDER DE MESAS Y PESTAÑAS DINÁMICAS (SIEMPRE VISIBLES)
   --------------------------------------------------------- */
   function renderTables() {
     el.tablesBar.innerHTML = "";
@@ -405,17 +403,18 @@
       el.tablesBar.appendChild(btn);
     }
 
+    // 🔥 PEDIDOS "PARA LLEVAR" - SIEMPRE VISIBLES (aunque estén vacíos)
     const llevarKeys = Object.keys(state.orders).filter(k => k.startsWith("llevar_"));
     llevarKeys.forEach((key) => {
       const owed = sentTotal(key) + orderTotal(state.orders[key]);
-      if (state.orders[key].length === 0 && sentTotal(key) === 0) return;
       const info = state.orderInfo[key] || {};
       const label = info.nombre || ("LLEVAR " + key.replace("llevar_", ""));
       const btn = document.createElement("button");
       const isActive = state.currentKey === key;
       btn.className = "table-btn" + (isActive ? " active" : "") + " has-order";
       btn.style.borderColor = "var(--green)";
-      btn.innerHTML = `<span>📦 ${escapeHtml(label)}</span><span class="table-sub">${formatCOP(owed)}</span>`;
+      const subTexto = (state.orders[key].length === 0 && sentTotal(key) === 0) ? "Vacío" : formatCOP(owed);
+      btn.innerHTML = `<span>📦 ${escapeHtml(label)}</span><span class="table-sub">${subTexto}</span>`;
       btn.addEventListener("click", () => switchOrder(key));
       el.tablesBar.appendChild(btn);
     });
@@ -427,17 +426,18 @@
     btnNuevoLlevar.addEventListener("click", crearPedidoParaLlevar);
     el.tablesBar.appendChild(btnNuevoLlevar);
 
+    // 🔥 PEDIDOS "DOMICILIO" - SIEMPRE VISIBLES
     const domicilioKeys = Object.keys(state.orders).filter(k => k.startsWith("domicilio_"));
     domicilioKeys.forEach((key) => {
       const owed = sentTotal(key) + orderTotal(state.orders[key]);
-      if (state.orders[key].length === 0 && sentTotal(key) === 0) return;
       const info = state.orderInfo[key] || {};
       const label = info.nombre ? info.nombre : ("DOM " + key.replace("domicilio_", ""));
       const btn = document.createElement("button");
       const isActive = state.currentKey === key;
       btn.className = "table-btn" + (isActive ? " active" : "") + " has-order";
       btn.style.borderColor = "var(--yellow)";
-      btn.innerHTML = `<span>🛵 ${escapeHtml(label)}</span><span class="table-sub">${formatCOP(owed)}</span>`;
+      const subTexto = (state.orders[key].length === 0 && sentTotal(key) === 0) ? "Vacío" : formatCOP(owed);
+      btn.innerHTML = `<span>🛵 ${escapeHtml(label)}</span><span class="table-sub">${subTexto}</span>`;
       btn.addEventListener("click", () => switchOrder(key));
       el.tablesBar.appendChild(btn);
     });
@@ -511,18 +511,10 @@
   }
 
   /* ---------------------------------------------------------
-     CANCELAR PEDIDO (eliminar solo el actual)
+     CANCELAR PEDIDO (elimina solo la clave actual)
   --------------------------------------------------------- */
-  async function cancelarPedido() {
-    const key = state.currentKey;
-    if (!key.startsWith("llevar_") && !key.startsWith("domicilio_")) {
-      showToast("Solo se pueden cancelar pedidos para llevar o domicilio");
-      return;
-    }
-
-    const info = state.orderInfo[key] || {};
-    const nombre = info.nombre || key;
-    if (!confirm(`¿Cancelar el pedido "${nombre}"? Se eliminará de la cocina y del carrito.`)) return;
+  async function cancelarPedido(key) {
+    if (!confirm(`¿Cancelar el pedido "${state.orderInfo[key]?.nombre || key}"? Se eliminará carrito y pedidos en cocina.`)) return;
 
     // 1. Eliminar pedidos en cocina de Firebase
     const sentList = state.sentPedidos[key] || [];
@@ -541,7 +533,7 @@
     // 2. Eliminar carrito remoto
     await eliminarCarritoRemoto(key);
 
-    // 3. Limpiar estado local
+    // 3. Eliminar estado local
     delete state.orders[key];
     delete state.sentPedidos[key];
     delete state.orderInfo[key];
@@ -550,7 +542,7 @@
     state.currentKey = "mesa_1";
     saveState();
 
-    // 5. Cancelar listener y resuscribir
+    // 5. Resuscribir carrito
     if (carritoUnsubscribe) {
       carritoUnsubscribe();
       carritoUnsubscribe = null;
@@ -711,7 +703,7 @@
     el.orderTotal.textContent = formatCOP(owed);
     el.btnCharge.disabled = owed <= 0;
 
-    // 🔥 BOTÓN CANCELAR (solo para llevar o domicilio)
+    // 🔥 BOTÓN CANCELAR (solo para claves dinámicas)
     const isDynamic = key.startsWith("llevar_") || key.startsWith("domicilio_");
     let btnCancelar = document.getElementById("btnCancelarPedido");
     if (!btnCancelar) {
@@ -722,8 +714,8 @@
     }
     if (isDynamic) {
       btnCancelar.style.display = "block";
-      btnCancelar.textContent = "🗑️ Cancelar pedido";
-      btnCancelar.onclick = cancelarPedido;
+      btnCancelar.textContent = "❌ Cancelar pedido";
+      btnCancelar.onclick = () => cancelarPedido(key);
     } else {
       btnCancelar.style.display = "none";
     }
@@ -1336,6 +1328,7 @@
     state.sentPedidos.domicilio = [];
     state.sentPedidos.paraLlevar = [];
 
+    // Asegurar que las claves dinámicas existan en state.orders
     const dynamicKeys = Object.keys(state.orderInfo).filter(k => k.startsWith("llevar_") || k.startsWith("domicilio_"));
     dynamicKeys.forEach(k => {
       if (!state.orders[k]) state.orders[k] = [];
