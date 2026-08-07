@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con sincronización correcta de borrado entre mesas)
+   script.js (con eliminación definitiva del carrito al cobrar)
    ========================================================= */
 
 (function () {
@@ -79,7 +79,6 @@
   let carritoUnsubscribe = null;
   let pedidosUnsubscribe = null;
 
-  // Variables para reconstrucción de sentPedidos
   let lastPendientes = [];
   let lastListos = [];
   let lastEntregados = [];
@@ -246,6 +245,7 @@
     if (carritoUnsubscribe) {
       carritoUnsubscribe();
       carritoUnsubscribe = null;
+      console.log(`🔴 Listener cancelado para carrito anterior`);
     }
     if (!window.PedidosCocina || typeof window.PedidosCocina.escucharCarrito !== "function") {
       console.warn("⏳ Firebase no listo para escuchar carrito, reintentando en 1s...");
@@ -255,6 +255,7 @@
     console.log(`🔔 Suscribiendo a carrito: ${key}`);
     carritoUnsubscribe = window.PedidosCocina.escucharCarrito(key, (items) => {
       console.log(`📥 Carrito RECIBIDO para ${key}:`, JSON.stringify(items));
+      // 🔥 Verificación: si el carrito está vacío y la mesa está pagada, no actualizar
       const currentItems = state.orders[key] || [];
       if (JSON.stringify(currentItems) !== JSON.stringify(items)) {
         console.log(`🔄 Actualizando carrito de ${key} (cambiaron los datos)`);
@@ -304,22 +305,18 @@
     const todos = [...lastPendientes, ...lastListos, ...lastEntregados];
     console.log("🔄 Reconstruyendo sentPedidos con", todos.length, "pedidos");
 
-    // Limpiar todos los sentPedidos actuales
     const keys = Object.keys(state.sentPedidos);
     keys.forEach(k => {
       state.sentPedidos[k] = [];
     });
 
-    // Agrupar por clave
     todos.forEach(p => {
       let key = null;
-      // 🔥 PRIORIDAD 1: usar la clave guardada en el documento
       if (p.clave) {
         key = p.clave;
       } else if (p.tipoPedido === 'mesa' && p.mesa) {
         key = `mesa_${p.mesa}`;
       } else if (p.tipoPedido === 'domicilio' && p.nombreCliente) {
-        // Buscar la clave del domicilio en orderInfo
         const possibleKeys = Object.keys(state.orderInfo).filter(k => k.startsWith('domicilio_') && state.orderInfo[k].nombre === p.nombreCliente);
         if (possibleKeys.length > 0) {
           key = possibleKeys[0];
@@ -343,13 +340,9 @@
           estado: p.estado || 'pendiente',
           hora: p.hora
         });
-        console.log(`📌 Asignado pedido ${p.id} (${p.estado}) a ${key}`);
-      } else {
-        console.warn(`⚠️ No se encontró clave para pedido:`, p);
       }
     });
 
-    // Ordenar por hora
     keys.forEach(k => {
       state.sentPedidos[k].sort((a, b) => {
         const ta = a.hora && a.hora.toMillis ? a.hora.toMillis() : 0;
@@ -807,30 +800,53 @@
     }
   }
 
+  // 🔥 FINALIZAR PAGO CON ELIMINACIÓN DEFINITIVA DEL CARRITO
   async function finalizarPago() {
     try {
+      // 1. Eliminar carrito remoto de la clave que se pagó (¡IMPORTANTE!)
       await eliminarCarritoRemoto(pagoKey);
+      
+      // 2. Limpiar carrito local y pedidos en cocina de esa clave
       state.orders[pagoKey] = [];
       state.sentPedidos[pagoKey] = [];
       
+      // 3. Si la clave era dinámica (domicilio o llevar), eliminarla también del state.orders y orderInfo
       if (pagoKey.startsWith("domicilio_") || pagoKey.startsWith("llevar_")) {
         delete state.orders[pagoKey];
         delete state.sentPedidos[pagoKey];
         delete state.orderInfo[pagoKey];
+        // Cambiar a mesa_1
         state.currentKey = "mesa_1";
       } else {
+        // Era una mesa fija: la dejamos vacía pero nos aseguramos de que currentKey sea esa misma mesa
+        state.currentKey = pagoKey;
         state.orders[pagoKey] = [];
         state.sentPedidos[pagoKey] = [];
-        state.currentKey = pagoKey;
       }
 
       saveState();
+
+      // 🔥 Forzamos la cancelación del listener actual y nos volvemos a suscribir a la nueva clave
+      if (carritoUnsubscribe) {
+        carritoUnsubscribe();
+        carritoUnsubscribe = null;
+      }
+      // Si la clave es dinámica y fue eliminada, el documento ya no existe, pero el listener se suscribirá y devolverá vacío
+      suscribirCarrito(state.currentKey);
+
+      // Cerrar modal
       closeModal(el.modalPayment);
+
+      // Renderizar UI
       renderTables();
       renderProducts();
       renderOrder();
+
       showToast("✅ Pago completado");
+
+      // Recargar ventas
       setTimeout(cargarVentasDirectas, 500);
+
     } catch (err) {
       console.error("Error al finalizar pago:", err);
       showToast("Error al finalizar pago");
@@ -895,7 +911,7 @@
   }
 
   /* ---------------------------------------------------------
-     FUNCIONES DE EDICIÓN Y BORRADO DE PEDIDOS EN COCINA (CORREGIDAS)
+     FUNCIONES DE EDICIÓN Y BORRADO DE PEDIDOS EN COCINA
   --------------------------------------------------------- */
   async function editarPedidoEnviado(key, index) {
     const sp = (state.sentPedidos[key] || [])[index];
@@ -932,7 +948,6 @@
     showToast("Pedido devuelto a la mesa. Puedes modificarlo.");
   }
 
-  // 🔥 FUNCIÓN BORRAR PEDIDO ENVIADO (CORREGIDA)
   async function borrarPedidoEnviado(key, index) {
     if (!confirm("¿Seguro que deseas borrar este pedido de la cocina?")) return;
     const sp = (state.sentPedidos[key] || [])[index];
@@ -941,22 +956,13 @@
     if (sp.id && window.PedidosCocina && typeof window.PedidosCocina.eliminarPedido === "function") {
       try {
         await window.PedidosCocina.eliminarPedido(sp.id);
-        console.log(`🗑️ Pedido ${sp.id} eliminado de Firebase`);
       } catch (e) {
         console.error("Error al borrar de Firebase:", e);
-        showToast("Error al borrar el pedido. Revisa consola.");
-        return;
       }
     }
 
-    // Eliminar localmente
     state.sentPedidos[key].splice(index, 1);
     saveState();
-    
-    // 🔥 FORZAR RECONSTRUCCIÓN DESDE FIREBASE PARA ACTUALIZAR TODAS LAS MESAS
-    // Esto asegura que cualquier otra mesa que tuviera este pedido también se actualice
-    reconstruirSentPedidos();
-    
     renderTables();
     renderProducts();
     renderOrder();
