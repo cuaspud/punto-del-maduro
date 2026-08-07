@@ -18,7 +18,7 @@ import {
   orderBy,
   serverTimestamp,
   writeBatch,
-  getDoc,
+  getDoc, // <--- necesario para pagos parciales
   setDoc,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -37,56 +37,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Asignación global para compatibilidad
+// Asignación global para compatibilidad con script.js
 window.firebaseApp = app;
 window.db = db;
 
 const PEDIDOS_COL = "pedidosCocina";
-const PEDIDOS_ACTIVOS_COL = "pedidosActivos"; // Nueva colección para carritos
+const CARRITOS_COL = "carritos"; // <--- NUEVA COLECCIÓN PARA SINCRONIZACIÓN
 const pedidosRef = collection(db, PEDIDOS_COL);
-const activosRef = collection(db, PEDIDOS_ACTIVOS_COL);
+const carritosRef = collection(db, CARRITOS_COL);
 
 /* ---------------------------------------------------------
-   FUNCIONES PARA CARRITOS (sincronización en tiempo real)
---------------------------------------------------------- */
-export async function guardarCarrito(key, order, orderInfo) {
-  // key: "mesa_1", "domicilio_1", "llevar_1"
-  const docRef = doc(db, PEDIDOS_ACTIVOS_COL, key);
-  await setDoc(docRef, {
-    key: key,
-    order: order || [],
-    orderInfo: orderInfo || {},
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
-}
-
-export function escucharCarrito(callback, onError) {
-  return onSnapshot(
-    collection(db, PEDIDOS_ACTIVOS_COL),
-    (snapshot) => {
-      const carritos = {};
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        carritos[data.key] = {
-          order: data.order || [],
-          orderInfo: data.orderInfo || {},
-        };
-      });
-      callback(carritos);
-    },
-    (err) => {
-      console.error("Error escuchando carritos:", err);
-      if (typeof onError === "function") onError(err);
-    }
-  );
-}
-
-export async function eliminarCarrito(key) {
-  await deleteDoc(doc(db, PEDIDOS_ACTIVOS_COL, key));
-}
-
-/* ---------------------------------------------------------
-   ENVIAR PEDIDO A COCINA (desde carrito)
+   ENVIAR PEDIDO A COCINA
 --------------------------------------------------------- */
 export async function enviarPedido(pedido) {
   return addDoc(pedidosRef, {
@@ -98,92 +59,107 @@ export async function enviarPedido(pedido) {
 }
 
 /* ---------------------------------------------------------
-   ESCUCHAR EN TIEMPO REAL (cocina)
+   CARRITOS (SINCRONIZACIÓN EN TIEMPO REAL)
+--------------------------------------------------------- */
+
+// Guardar carrito (items) de una mesa/domicilio
+export async function guardarCarrito(key, items) {
+  const ref = doc(db, CARRITOS_COL, key);
+  await setDoc(ref, {
+    key,
+    items,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+// Obtener carrito actual (para sincronización inicial)
+export async function obtenerCarrito(key) {
+  const ref = doc(db, CARRITOS_COL, key);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    return snap.data().items || [];
+  }
+  return [];
+}
+
+// Escuchar cambios en un carrito específico
+export function escucharCarrito(key, callback, onError) {
+  const ref = doc(db, CARRITOS_COL, key);
+  return onSnapshot(ref, (snap) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      callback(data.items || []);
+    } else {
+      callback([]);
+    }
+  }, onError);
+}
+
+// Eliminar carrito (cuando se cobra o se reinicia)
+export async function eliminarCarrito(key) {
+  const ref = doc(db, CARRITOS_COL, key);
+  await deleteDoc(ref);
+}
+
+/* ---------------------------------------------------------
+   ESCUCHAR EN TIEMPO REAL (pedidos de cocina)
 --------------------------------------------------------- */
 export function escucharPendientes(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "pendiente"), orderBy("hora", "asc"));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const pedidos = [];
-      snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
-      callback(pedidos);
-    },
-    (err) => {
-      console.error("Error escuchando pendientes:", err);
-      if (typeof onError === "function") onError(err);
-    }
-  );
+  return onSnapshot(q, (snap) => {
+    const pedidos = [];
+    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    callback(pedidos);
+  }, onError);
 }
 
 export function escucharListos(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "listo"), orderBy("hora", "asc"));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const pedidos = [];
-      snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
-      callback(pedidos);
-    },
-    (err) => {
-      console.error("Error escuchando listos:", err);
-      if (typeof onError === "function") onError(err);
-    }
-  );
+  return onSnapshot(q, (snap) => {
+    const pedidos = [];
+    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    callback(pedidos);
+  }, onError);
 }
 
 export function escucharEntregados(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "entregado"), orderBy("hora", "asc"));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const pedidos = [];
-      snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
-      callback(pedidos);
-    },
-    (err) => {
-      console.error("Error escuchando entregados:", err);
-      if (typeof onError === "function") onError(err);
-    }
-  );
+  return onSnapshot(q, (snap) => {
+    const pedidos = [];
+    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    callback(pedidos);
+  }, onError);
 }
 
 export function escucharVentasHoy(callback, onError) {
   const q = query(pedidosRef, where("pagado", "==", true));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const ventas = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        // Si tiene pagos individuales, desglosar
-        if (data.pagos && data.pagos.length > 0) {
-          data.pagos.forEach((pago) => {
-            ventas.push({
-              id: d.id + "_" + pago.metodo + "_" + pago.monto,
-              ...data,
-              metodoPago: pago.metodo,
-              total: pago.monto,
-              horaPago: pago.horaPago || data.horaPago,
-            });
+  return onSnapshot(q, (snap) => {
+    const ventas = [];
+    snap.forEach((d) => {
+      const data = d.data();
+      // Si tiene pagos, desglosamos
+      if (data.pagos && data.pagos.length > 0) {
+        data.pagos.forEach(pago => {
+          ventas.push({
+            id: d.id + "_" + pago.metodo + "_" + pago.monto,
+            ...data,
+            metodoPago: pago.metodo,
+            total: pago.monto,
+            horaPago: pago.horaPago || data.horaPago
           });
-        } else {
-          ventas.push({ id: d.id, ...data });
-        }
-      });
-      // Ordenar por hora de pago
-      ventas.sort((a, b) => {
-        const ta = a.horaPago && typeof a.horaPago.toMillis === "function" ? a.horaPago.toMillis() : 0;
-        const tb = b.horaPago && typeof b.horaPago.toMillis === "function" ? b.horaPago.toMillis() : 0;
-        return tb - ta;
-      });
-      callback(ventas);
-    },
-    (err) => {
-      console.error("Error escuchando ventas:", err);
-      if (typeof onError === "function") onError(err);
-    }
-  );
+        });
+      } else {
+        // Caso antiguo (un solo pago)
+        ventas.push({ id: d.id, ...data });
+      }
+    });
+    ventas.sort((a, b) => {
+      const ta = a.horaPago && typeof a.horaPago.toMillis === "function" ? a.horaPago.toMillis() : 0;
+      const tb = b.horaPago && typeof b.horaPago.toMillis === "function" ? b.horaPago.toMillis() : 0;
+      return tb - ta;
+    });
+    callback(ventas);
+  }, onError);
 }
 
 /* ---------------------------------------------------------
@@ -203,7 +179,7 @@ export function eliminarPedido(id) {
 }
 
 /* ---------------------------------------------------------
-   REGISTRAR PAGO PARCIAL
+   PAGOS PARCIALES
 --------------------------------------------------------- */
 export async function registrarPagoParcial(id, metodo, monto) {
   if (!id || !metodo || monto <= 0) return;
@@ -215,7 +191,7 @@ export async function registrarPagoParcial(id, metodo, monto) {
   const data = docSnap.data();
   const total = data.total || 0;
   const pagos = data.pagos || [];
-  
+
   const nuevoPago = {
     metodo,
     monto,
@@ -236,7 +212,7 @@ export async function registrarPagoParcial(id, metodo, monto) {
 }
 
 /* ---------------------------------------------------------
-   COBRAR (batch para múltiples IDs)
+   COBRAR (para compatibilidad con pagos únicos)
 --------------------------------------------------------- */
 export async function cobrarPedidos(ids, metodoPago) {
   if (!ids || ids.length === 0) return;
@@ -248,6 +224,7 @@ export async function cobrarPedidos(ids, metodoPago) {
         {
           pagado: true,
           metodoPago,
+          pagos: [{ metodo: metodoPago, monto: 0, horaPago: serverTimestamp() }],
           estado: "entregado",
           horaPago: serverTimestamp(),
         },
@@ -258,20 +235,16 @@ export async function cobrarPedidos(ids, metodoPago) {
   return batch.commit();
 }
 
+/* ---------------------------------------------------------
+   ESCUCHAR LISTOS PARA MESERO
+--------------------------------------------------------- */
 export function escucharListosParaMesero(callback, onError) {
   const q = query(pedidosRef, where("estado", "==", "listo"));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const pedidos = [];
-      snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
-      callback(pedidos);
-    },
-    (err) => {
-      console.error("Error escuchando listos para mesero:", err);
-      if (typeof onError === "function") onError(err);
-    }
-  );
+  return onSnapshot(q, (snap) => {
+    const pedidos = [];
+    snap.forEach((d) => pedidos.push({ id: d.id, ...d.data() }));
+    callback(pedidos);
+  }, onError);
 }
 
 /* ---------------------------------------------------------
@@ -290,6 +263,7 @@ window.PedidosCocina = {
   cobrarPedidos,
   registrarPagoParcial,
   guardarCarrito,
+  obtenerCarrito,
   escucharCarrito,
   eliminarCarrito,
 };
