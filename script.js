@@ -1,18 +1,53 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (con botón Cancelar funcional)
+   script.js (completo con botón Cancelar)
    ========================================================= */
 
 (function () {
   "use strict";
 
   /* ---------------------------------------------------------
-     DATOS DEL MENÚ (igual que antes)
+     DATOS DEL MENÚ
   --------------------------------------------------------- */
   const CATEGORIES = ["Maduros", "Tostones", "Bowls", "Sodas Italianas", "Jugos Naturales", "Otras Bebidas"];
 
   const PRODUCTS = [
-    // ... (todos los productos, los mismos de siempre)
+    { id: "m1", cat: "Maduros", name: "Maduro con Queso Campesino", price: 5000 },
+    { id: "m2", cat: "Maduros", name: "Maduro con Queso Doble Crema", price: 6000 },
+    { id: "m3", cat: "Maduros", name: "Maduro con Queso Costeño", price: 6000 },
+    { id: "m4", cat: "Maduros", name: "Maduro con Costilla (queso doble crema, costilla en cuadritos y maicitos)", price: 12000 },
+    { id: "m5", cat: "Maduros", name: "Maduro con Chorizo Premium (queso doble crema, chorizo premium y maicitos)", price: 12000 },
+    { id: "m6", cat: "Maduros", name: "Maduro con Carne (queso doble crema, carne desmechada y maicitos)", price: 13000 },
+    { id: "m7", cat: "Maduros", name: "Maduro Especial (queso doble crema, campesino, costeño, costilla, chorizo premium y maicitos)", price: 20000 },
+    { id: "m8", cat: "Maduros", name: "Maduro con Bocadillo (queso campesino y bocadillo)", price: 5500 },
+    { id: "m9", cat: "Maduros", name: "Maduro de Miel (miel, queso campesino o doble crema y crema de leche)", price: 6000 },
+    { id: "t1", cat: "Tostones", name: "Tostón Ranchero (pollo en salsa de la casa, queso doble crema y salchicha ranchera)", price: 18000 },
+    { id: "t2", cat: "Tostones", name: "Tostón de Carne (carne desmechada, queso doble crema, maicitos y guacamole)", price: 18000 },
+    { id: "b1", cat: "Bowls", name: "Bowl de Costilla (maduro, queso doble crema, queso costeño, costilla, pico de gallo, guacamole y maicitos)", price: 18000 },
+    { id: "b2", cat: "Bowls", name: "Bowl de Carne (maduro, queso doble crema, queso costeño, carne desmechada, pico de gallo, guacamole y maicitos)", price: 18000 },
+    { id: "si1", cat: "Sodas Italianas", name: "Soda Italiana Frutos Rojos", price: 12000 },
+    { id: "si2", cat: "Sodas Italianas", name: "Soda Italiana Frutos Amarillos", price: 12000 },
+    { id: "si3", cat: "Sodas Italianas", name: "Soda Italiana Lulo", price: 12000 },
+    { id: "jn1", cat: "Jugos Naturales", name: "Jugo Natural de Mango en Agua", price: 6000 },
+    { id: "jn1l", cat: "Jugos Naturales", name: "Jugo Natural de Mango en Leche", price: 7500 },
+    { id: "jn2", cat: "Jugos Naturales", name: "Jugo Natural de Mora en Agua", price: 6000 },
+    { id: "jn2l", cat: "Jugos Naturales", name: "Jugo Natural de Mora en Leche", price: 7500 },
+    { id: "jn3", cat: "Jugos Naturales", name: "Jugo Natural de Maracuyá en Agua", price: 6000 },
+    { id: "jn3l", cat: "Jugos Naturales", name: "Jugo Natural de Maracuyá en Leche", price: 7500 },
+    { id: "ob1", cat: "Otras Bebidas", name: "Jugo HIT 1 Litro", price: 6000 },
+    { id: "ob2", cat: "Otras Bebidas", name: "Jugo HIT Personal", price: 4000 },
+    { id: "ob15", cat: "Otras Bebidas", name: "Jugo HIT Mini", price: 2500 },
+    { id: "ob3", cat: "Otras Bebidas", name: "Soda Bretaña", price: 4000 },
+    { id: "ob9", cat: "Otras Bebidas", name: "Coca-Cola", price: 4000 },
+    { id: "ob16", cat: "Otras Bebidas", name: "Coca-Cola Mini", price: 2500 },
+    { id: "ob4", cat: "Otras Bebidas", name: "Agua", price: 2000 },
+    { id: "ob10", cat: "Otras Bebidas", name: "Agua H2O Mini", price: 2000 },
+    { id: "ob11", cat: "Otras Bebidas", name: "Pony Malta Mini", price: 2500 },
+    { id: "ob12", cat: "Otras Bebidas", name: "Postobón Mini", price: 2000 },
+    { id: "ob13", cat: "Otras Bebidas", name: "Postobón 1.5 L", price: 6500 },
+    { id: "ob5", cat: "Otras Bebidas", name: "Limonada Natural", price: 6000 },
+    { id: "ob6", cat: "Otras Bebidas", name: "Café Negro", price: 2500 },
+    { id: "ob14", cat: "Otras Bebidas", name: "Café con Leche", price: 3500 },
   ];
 
   const TABLE_COUNT = 5;
@@ -49,7 +84,7 @@
   let lastEntregados = [];
 
   /* ---------------------------------------------------------
-     PERSISTENCIA (igual)
+     PERSISTENCIA
   --------------------------------------------------------- */
   function saveState() {
     try {
@@ -218,11 +253,11 @@
     btnAgregarPago: document.getElementById("btnAgregarPago"),
     btnFinalizarPago: document.getElementById("btnFinalizarPago"),
     payPendiente: document.getElementById("payPendiente"),
-    orderFooter: document.querySelector(".order-footer"), // ✅ Ahora busca por clase
+    orderFooter: document.querySelector(".order-footer"),
   };
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DEL CARRITO (Firestore)
+     SINCRONIZACIÓN
   --------------------------------------------------------- */
   function suscribirCarrito(key) {
     if (carritoUnsubscribe) {
@@ -271,9 +306,6 @@
     }
   }
 
-  /* ---------------------------------------------------------
-     SINCRONIZACIÓN DE PEDIDOS EN COCINA
-  --------------------------------------------------------- */
   function reconstruirSentPedidos() {
     const activos = [...lastPendientes, ...lastListos];
     const keys = Object.keys(state.sentPedidos);
@@ -348,7 +380,7 @@
   }
 
   /* ---------------------------------------------------------
-     RENDER DE MESAS Y PESTAÑAS DINÁMICAS (SIEMPRE VISIBLES)
+     RENDER DE MESAS Y PESTAÑAS (SIEMPRE VISIBLES)
   --------------------------------------------------------- */
   function renderTables() {
     el.tablesBar.innerHTML = "";
@@ -473,7 +505,7 @@
   }
 
   /* ---------------------------------------------------------
-     CANCELAR PEDIDO (elimina solo la clave actual)
+     CANCELAR PEDIDO
   --------------------------------------------------------- */
   async function cancelarPedido(key) {
     if (!confirm(`¿Cancelar el pedido "${state.orderInfo[key]?.nombre || key}"? Se eliminará carrito y pedidos en cocina.`)) return;
@@ -594,7 +626,6 @@
     const key = state.currentKey;
     const order = currentOrder();
 
-    // Título
     if (key.startsWith("domicilio_")) {
       const info = state.orderInfo[key] || {};
       el.orderTableTitle.innerHTML = "🛵 " + escapeHtml(info.nombre || "Domicilio") + '<span class="order-client-sub">' + escapeHtml(info.direccion || "") + "</span>";
@@ -609,7 +640,6 @@
     const count = orderItemCount(order);
     el.orderCount.textContent = count === 1 ? "1 producto nuevo" : count + " productos nuevos";
 
-    // Banner de cocina
     const sentList = state.sentPedidos[key] || [];
     if (sentList.length > 0) {
       el.orderSentBanner.innerHTML = "";
@@ -648,7 +678,6 @@
       el.orderSentBanner.innerHTML = "";
     }
 
-    // Lista de productos
     Array.from(el.orderList.children).forEach((child) => { if (child.id !== "orderEmpty") child.remove(); });
     if (order.length === 0) {
       el.orderEmpty.style.display = "flex";
@@ -660,18 +689,16 @@
     el.orderTotal.textContent = formatCOP(owed);
     el.btnCharge.disabled = owed <= 0;
 
-    // 🔥 BOTÓN CANCELAR (solo para claves dinámicas)
+    // 🔥 BOTÓN CANCELAR
     const isDynamic = key.startsWith("llevar_") || key.startsWith("domicilio_");
     let btnCancelar = document.getElementById("btnCancelarPedido");
     if (!btnCancelar) {
       btnCancelar = document.createElement("button");
       btnCancelar.id = "btnCancelarPedido";
       btnCancelar.style.cssText = "width:100%; padding:14px; border-radius:18px; background:#E64A3B; color:white; font-weight:800; font-size:16px; margin-top:8px; border:none; cursor:pointer;";
-      // Insertar el botón ANTES del botón "Cobrar" (que es el último hijo del footer)
       if (el.orderFooter) {
         el.orderFooter.insertBefore(btnCancelar, el.orderFooter.lastElementChild);
       } else {
-        // Fallback: agregar al final del footer (si no se encontró)
         const footer = document.querySelector(".order-footer");
         if (footer) footer.appendChild(btnCancelar);
       }
@@ -1024,18 +1051,332 @@
   }
 
   function renderVentas(ventas) {
-    // ... (igual que antes)
+    let filtradas = [];
+    if (ventasSelection.type === "day") {
+      filtradas = ventas.filter(v => {
+        const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+        return dayKeyOf(fecha) === ventasSelection.key;
+      });
+    } else {
+      filtradas = ventas.filter(v => {
+        const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+        return monthKeyOf(fecha) === ventasSelection.key;
+      });
+    }
+    filtradas.sort((a, b) => {
+      const ta = a.horaPago && typeof a.horaPago.toMillis === "function" ? a.horaPago.toMillis() : 0;
+      const tb = b.horaPago && typeof b.horaPago.toMillis === "function" ? b.horaPago.toMillis() : 0;
+      return tb - ta;
+    });
+    const hoyKey = getTodayKey();
+    let titulo = "📊 Ventas";
+    if (ventasSelection.type === "day") {
+      if (ventasSelection.key === hoyKey) titulo = "📊 Ventas de hoy";
+      else titulo = `📊 Ventas del ${formatDateKey(ventasSelection.key)}`;
+    } else {
+      const [y, m] = ventasSelection.key.split("-");
+      const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      titulo = `📊 Ventas de ${meses[parseInt(m) - 1]} ${y}`;
+    }
+    if (el.ventasScreenTitle) el.ventasScreenTitle.textContent = titulo;
+    if (el.ventasTotalLabel) el.ventasTotalLabel.textContent = "Total ventas";
+
+    el.ventasList.innerHTML = "";
+    if (filtradas.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ventas-empty";
+      empty.textContent = "No hay ventas en esta fecha";
+      el.ventasList.appendChild(empty);
+    } else {
+      filtradas.forEach((v) => {
+        const esDom = v.tipoPedido === "domicilio";
+        const esParaLlevar = v.tipoPedido === "paraLlevar";
+        let tituloItem = "";
+        if (esParaLlevar) tituloItem = "📦 " + escapeHtml(v.nombreCliente || "Para llevar");
+        else if (esDom) tituloItem = "🛵 " + escapeHtml(v.nombreCliente || "Domicilio");
+        else tituloItem = "🍽️ Mesa " + escapeHtml(v.mesa);
+        const item = document.createElement("div");
+        item.className = "venta-item";
+        const fecha = v.horaPago ? horaTexto(v.horaPago) : (v.hora ? horaTexto(v.hora) : "");
+        item.innerHTML = `<div><div class="venta-title">${tituloItem}</div><div class="venta-sub">${fecha} · ${escapeHtml(v.metodoPago || "Sin método")}</div></div><div class="venta-total">${formatCOP(v.total)}</div>`;
+        el.ventasList.appendChild(item);
+      });
+    }
+
+    const total = filtradas.reduce((sum, v) => sum + (v.total || 0), 0);
+    el.ventasTotalHoy.textContent = formatCOP(total);
+    el.ventasCountHoy.textContent = filtradas.length === 1 ? "1 venta" : filtradas.length + " ventas";
+    const sumaPorMetodo = (...metodos) => filtradas.filter((v) => metodos.includes(v.metodoPago)).reduce((sum, v) => sum + (v.total || 0), 0);
+    el.ventasEfectivo.textContent = formatCOP(sumaPorMetodo("Efectivo"));
+    el.ventasNequi.textContent = formatCOP(sumaPorMetodo("Nequi"));
+    el.ventasTransferencia.textContent = formatCOP(sumaPorMetodo("FIOS", "Transferencia"));
   }
 
   function renderVentasDaysPanel(ventas) {
-    // ... (igual que antes)
+    const hoyKey = getTodayKey();
+    el.ventasDaysList.innerHTML = "";
+
+    const hoyVentas = ventas.filter(v => {
+      const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+      return dayKeyOf(fecha) === hoyKey;
+    });
+    const totalHoy = hoyVentas.reduce((s, v) => s + (v.total || 0), 0);
+    const btnHoy = document.createElement("button");
+    btnHoy.className = "ventas-day-btn" + (ventasSelection.type === "day" && ventasSelection.key === hoyKey ? " active" : "");
+    btnHoy.innerHTML = `<span>Hoy</span><span class="venta-day-sub">${formatCOP(totalHoy)}</span>`;
+    btnHoy.addEventListener("click", () => {
+      ventasSelection = { type: "day", key: hoyKey };
+      renderVentasDaysPanel(ventas);
+      renderVentas(ventas);
+    });
+    el.ventasDaysList.appendChild(btnHoy);
+
+    const daysMap = new Map();
+    ventas.forEach(v => {
+      const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+      const key = dayKeyOf(fecha);
+      if (!daysMap.has(key)) daysMap.set(key, { total: 0, count: 0 });
+      const entry = daysMap.get(key);
+      entry.total += v.total || 0;
+      entry.count += 1;
+    });
+    const sortedDays = Array.from(daysMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+    let count = 0;
+    for (const [key, data] of sortedDays) {
+      if (key === hoyKey) continue;
+      if (count > 9) break;
+      const btn = document.createElement("button");
+      btn.className = "ventas-day-btn" + (ventasSelection.type === "day" && ventasSelection.key === key ? " active" : "");
+      const label = formatDateKey(key);
+      btn.innerHTML = `<span>${label}</span><span class="venta-day-sub">${formatCOP(data.total)}</span>`;
+      btn.addEventListener("click", () => {
+        ventasSelection = { type: "day", key: key };
+        renderVentasDaysPanel(ventas);
+        renderVentas(ventas);
+      });
+      el.ventasDaysList.appendChild(btn);
+      count++;
+    }
+
+    const mesKey = hoyKey.slice(0, 7);
+    const mesVentas = ventas.filter(v => {
+      const fecha = v.horaPago ? fechaDeHora(v.horaPago) : (v.hora ? fechaDeHora(v.hora) : new Date());
+      return monthKeyOf(fecha) === mesKey;
+    });
+    const totalMes = mesVentas.reduce((s, v) => s + (v.total || 0), 0);
+    const monthLabel = document.createElement("div");
+    monthLabel.className = "ventas-month-label";
+    monthLabel.textContent = "Este mes";
+    el.ventasDaysList.appendChild(monthLabel);
+    const monthBtn = document.createElement("button");
+    monthBtn.className = "ventas-month-btn" + (ventasSelection.type === "month" && ventasSelection.key === mesKey ? " active" : "");
+    monthBtn.innerHTML = `<span>Total</span><span>${formatCOP(totalMes)}</span>`;
+    monthBtn.addEventListener("click", () => {
+      ventasSelection = { type: "month", key: mesKey };
+      renderVentasDaysPanel(ventas);
+      renderVentas(ventas);
+    });
+    el.ventasDaysList.appendChild(monthBtn);
   }
 
   /* ---------------------------------------------------------
-     MODALES GENERALES, TOAST, SELECTOR, EVENTOS, INIT
+     MODALES GENERALES
   --------------------------------------------------------- */
-  // (el resto del código es idéntico al anterior, solo asegúrate de que esté completo)
+  function openModal(modalEl) { modalEl.classList.add("open"); }
+  function closeModal(modalEl) { modalEl.classList.remove("open"); }
 
-  // ... (incluir el resto de funciones: openModal, closeModal, showToast, renderSelectTableGrid, etc.)
+  document.querySelectorAll("[data-close]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      closeModal(document.getElementById(btn.getAttribute("data-close")));
+    });
+  });
 
+  [el.modalExceptions, el.modalPayment, el.modalDomicilio].forEach((overlay) => {
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(overlay); });
+  });
+
+  /* ---------------------------------------------------------
+     TOAST
+  --------------------------------------------------------- */
+  let toastTimer = null;
+  function showToast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove("show"), 2200);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  /* ---------------------------------------------------------
+     SELECTOR DE MESA
+  --------------------------------------------------------- */
+  function renderSelectTableGrid() {
+    el.selectTableGrid.innerHTML = "";
+    for (let i = 1; i <= TABLE_COUNT; i++) {
+      const btn = document.createElement("button");
+      btn.className = "select-table-btn";
+      btn.textContent = "Mesa " + i;
+      btn.addEventListener("click", () => pickMesa(i));
+      el.selectTableGrid.appendChild(btn);
+    }
+  }
+
+  function openOrderTypeScreen() {
+    openModal(el.screenOrderType);
+  }
+
+  function pickMesa(tableNum) {
+    switchOrder(`mesa_${tableNum}`);
+    closeModal(el.screenSelectTable);
+    closeModal(el.screenOrderType);
+  }
+
+  /* ---------------------------------------------------------
+     ENTREGADOS (historial)
+  --------------------------------------------------------- */
+  function renderEntregados(pedidos) {
+    const ordenados = pedidos.slice().reverse();
+    el.entregadosList.innerHTML = "";
+    if (ordenados.length === 0) {
+      el.entregadosList.innerHTML = '<div class="ventas-empty">Aún no hay pedidos entregados</div>';
+    } else {
+      ordenados.forEach((p) => {
+        const esDom = p.tipoPedido === "domicilio";
+        const esParaLlevar = p.tipoPedido === "paraLlevar";
+        let titulo = "";
+        if (esParaLlevar) titulo = "📦 " + escapeHtml(p.nombreCliente || "Para llevar");
+        else if (esDom) titulo = "🛵 " + escapeHtml(p.nombreCliente || "Domicilio");
+        else titulo = "🍽️ Mesa " + escapeHtml(p.mesa);
+        const fecha = p.hora && typeof p.hora.toDate === "function"
+          ? p.hora.toDate().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+          : "";
+        const pagoTexto = p.pagado ? " · " + escapeHtml(p.metodoPago || "Pagado") : " · Sin cobrar";
+        const item = document.createElement("div");
+        item.className = "venta-item";
+        item.innerHTML = `<div><div class="venta-title">${titulo}</div><div class="venta-sub">${fecha}${pagoTexto}</div></div><div class="venta-total">${formatCOP(p.total)}</div>`;
+        el.entregadosList.appendChild(item);
+      });
+    }
+    el.entregadosCount.textContent = ordenados.length === 1 ? "1 pedido" : ordenados.length + " pedidos";
+  }
+
+  /* ---------------------------------------------------------
+     EVENTOS GLOBALES
+  --------------------------------------------------------- */
+  el.btnCharge.addEventListener("click", openPaymentModal);
+  el.btnNewOrder.addEventListener("click", openOrderTypeScreen);
+  el.btnSaveExceptions.addEventListener("click", saveExceptions);
+  el.btnKitchen.addEventListener("click", sendToKitchen);
+  el.btnOrderType.addEventListener("click", openOrderTypeScreen);
+  el.btnPickMesa.addEventListener("click", () => {
+    closeModal(el.screenOrderType);
+    openModal(el.screenSelectTable);
+  });
+  el.btnPickDomicilio.addEventListener("click", abrirModalNuevoDomicilio);
+  el.btnSaveDomicilio.addEventListener("click", saveDomicilio);
+  el.btnEntregados.addEventListener("click", () => {
+    openModal(el.screenEntregados);
+  });
+  el.btnVentas.addEventListener("click", async () => {
+    ventasSelection = { type: "day", key: getTodayKey() };
+    const ventas = await cargarVentasDirectas();
+    renderVentasDaysPanel(ventas);
+    openModal(el.screenVentas);
+  });
+  if (el.btnRecargarVentas) {
+    el.btnRecargarVentas.addEventListener("click", async () => {
+      showToast("🔄 Actualizando ventas...");
+      const ventas = await cargarVentasDirectas();
+      renderVentasDaysPanel(ventas);
+      showToast("✅ Ventas actualizadas");
+    });
+  }
+
+  el.btnAgregarPago.addEventListener("click", agregarPagoParcial);
+  el.btnFinalizarPago.addEventListener("click", finalizarPago);
+  el.inputMontoPago.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el.btnAgregarPago.click();
+    }
+  });
+
+  /* ---------------------------------------------------------
+     INIT
+  --------------------------------------------------------- */
+  function init() {
+    loadState();
+    for (let i = 1; i <= TABLE_COUNT; i++) {
+      const key = `mesa_${i}`;
+      if (!state.orders[key]) state.orders[key] = [];
+      if (!state.sentPedidos[key]) state.sentPedidos[key] = [];
+    }
+    state.sentPedidos.domicilio = [];
+    state.sentPedidos.paraLlevar = [];
+
+    const dynamicKeys = Object.keys(state.orderInfo).filter(k => k.startsWith("llevar_") || k.startsWith("domicilio_"));
+    dynamicKeys.forEach(k => {
+      if (!state.orders[k]) state.orders[k] = [];
+      if (!state.sentPedidos[k]) state.sentPedidos[k] = [];
+    });
+
+    renderTables();
+    renderCategories();
+    renderProducts();
+    renderOrder();
+    renderSelectTableGrid();
+
+    suscribirCarrito(state.currentKey);
+
+    let intentos = 0;
+    const maxIntentos = 20;
+    function iniciarListeners() {
+      if (window.PedidosCocina && typeof window.PedidosCocina.escucharPendientes === 'function') {
+        console.log("✅ Firebase listo, iniciando listeners de pedidos");
+        suscribirPedidos();
+
+        if (typeof window.PedidosCocina.escucharEntregados === 'function') {
+          window.PedidosCocina.escucharEntregados((pedidos) => {
+            renderEntregados(pedidos);
+          }, (err) => console.error("Error entregados:", err));
+        }
+
+        if (typeof window.PedidosCocina.escucharVentasHoy === 'function') {
+          window.PedidosCocina.escucharVentasHoy((ventas) => {
+            lastVentasRaw = ventas;
+            renderVentas(ventas);
+            renderVentasDaysPanel(ventas);
+          }, (err) => console.error("Error ventas:", err));
+        }
+      } else {
+        intentos++;
+        if (intentos < maxIntentos) {
+          console.log(`⏳ Esperando Firebase... (${intentos})`);
+          setTimeout(iniciarListeners, 500);
+        } else {
+          console.error("❌ Firebase no disponible después de varios intentos");
+          showToast("Error: Firebase no cargó. Recarga la página.");
+        }
+      }
+    }
+    iniciarListeners();
+
+    setTimeout(() => {
+      if (window.firebaseApp) {
+        cargarVentasDirectas();
+      }
+    }, 1500);
+
+    if (!state.currentKey || !state.orders[state.currentKey]) {
+      state.currentKey = "mesa_1";
+      openOrderTypeScreen();
+    }
+  }
+
+  init();
 })();
