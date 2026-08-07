@@ -1,6 +1,6 @@
 /* =========================================================
    EL PUNTO DEL MADURO — POS
-   script.js (versión completa corregida)
+   script.js (con logs para depurar sobrescritura de carrito)
    ========================================================= */
 
 (function () {
@@ -67,7 +67,6 @@
     deliveryCounter: 0
   };
 
-  // Inicializar mesas
   for (let i = 1; i <= TABLE_COUNT; i++) {
     const key = `mesa_${i}`;
     state.orders[key] = [];
@@ -241,7 +240,7 @@
   };
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DEL CARRITO
+     SINCRONIZACIÓN DEL CARRITO (Firestore)
   --------------------------------------------------------- */
   function suscribirCarrito(key) {
     if (carritoUnsubscribe) {
@@ -249,15 +248,24 @@
       carritoUnsubscribe = null;
     }
     if (!window.PedidosCocina || typeof window.PedidosCocina.escucharCarrito !== "function") {
-      console.warn("⏳ Firebase no listo para escuchar carrito, reintentando...");
+      console.warn("⏳ Firebase no listo para escuchar carrito, reintentando en 1s...");
       setTimeout(() => suscribirCarrito(key), 1000);
       return;
     }
+    console.log(`🔔 Suscribiendo a carrito: ${key}`);
     carritoUnsubscribe = window.PedidosCocina.escucharCarrito(key, (items) => {
-      state.orders[key] = items || [];
-      renderOrder();
-      renderProducts();
-      renderTables();
+      console.log(`📥 Carrito RECIBIDO para ${key}:`, JSON.stringify(items));
+      // Solo actualizar si los datos son diferentes para evitar bucles
+      const currentItems = state.orders[key] || [];
+      if (JSON.stringify(currentItems) !== JSON.stringify(items)) {
+        console.log(`🔄 Actualizando carrito de ${key} (cambiaron los datos)`);
+        state.orders[key] = items || [];
+        renderOrder();
+        renderProducts();
+        renderTables();
+      } else {
+        console.log(`🔄 Carrito sin cambios para ${key}`);
+      }
     }, (err) => {
       console.error("Error escuchando carrito:", err);
       setTimeout(() => suscribirCarrito(key), 5000);
@@ -265,6 +273,7 @@
   }
 
   async function guardarCarritoRemoto(key, items) {
+    console.log(`💾 GUARDANDO carrito para ${key}:`, JSON.stringify(items));
     if (!window.PedidosCocina || typeof window.PedidosCocina.guardarCarrito !== "function") {
       console.warn("⏳ Firebase no listo para guardar carrito, reintentando...");
       setTimeout(() => guardarCarritoRemoto(key, items), 1000);
@@ -272,8 +281,9 @@
     }
     try {
       await window.PedidosCocina.guardarCarrito(key, items);
+      console.log(`✅ Carrito GUARDADO para ${key}`);
     } catch (e) {
-      console.error("Error guardando carrito:", e);
+      console.error("❌ Error guardando carrito:", e);
       setTimeout(() => guardarCarritoRemoto(key, items), 3000);
     }
   }
@@ -282,17 +292,19 @@
     if (!window.PedidosCocina || typeof window.PedidosCocina.eliminarCarrito !== "function") return;
     try {
       await window.PedidosCocina.eliminarCarrito(key);
+      console.log(`🗑️ Carrito eliminado: ${key}`);
     } catch (e) {
       console.error("Error eliminando carrito:", e);
     }
   }
 
   /* ---------------------------------------------------------
-     SINCRONIZACIÓN DE PEDIDOS EN COCINA
+     SINCRONIZACIÓN DE PEDIDOS EN COCINA (Firestore)
   --------------------------------------------------------- */
   function reconstruirSentPedidos() {
     const todos = [...lastPendientes, ...lastListos, ...lastEntregados];
-    // Limpiar todos los sentPedidos actuales
+    console.log("🔄 Reconstruyendo sentPedidos con", todos.length, "pedidos");
+
     const keys = Object.keys(state.sentPedidos);
     keys.forEach(k => {
       state.sentPedidos[k] = [];
@@ -353,16 +365,19 @@
     }
 
     const pendientesUnsub = window.PedidosCocina.escucharPendientes((pedidos) => {
+      console.log("📥 Pedidos pendientes recibidos:", pedidos.length);
       lastPendientes = pedidos;
       reconstruirSentPedidos();
     }, (err) => console.error("Error pendientes:", err));
 
     const listosUnsub = window.PedidosCocina.escucharListos((pedidos) => {
+      console.log("📥 Pedidos listos recibidos:", pedidos.length);
       lastListos = pedidos;
       reconstruirSentPedidos();
     }, (err) => console.error("Error listos:", err));
 
     const entregadosUnsub = window.PedidosCocina.escucharEntregados((pedidos) => {
+      console.log("📥 Pedidos entregados recibidos:", pedidos.length);
       lastEntregados = pedidos;
       reconstruirSentPedidos();
     }, (err) => console.error("Error entregados:", err));
@@ -375,7 +390,7 @@
   }
 
   /* ---------------------------------------------------------
-     RENDER DE MESAS
+     RENDER DE MESAS Y PESTAÑAS DINÁMICAS
   --------------------------------------------------------- */
   function renderTables() {
     el.tablesBar.innerHTML = "";
@@ -396,7 +411,6 @@
       el.tablesBar.appendChild(btn);
     }
 
-    // Para llevar
     Object.keys(state.orders).filter(k => k.startsWith("llevar_")).forEach((key) => {
       const info = state.orderInfo[key] || {};
       const label = info.nombre || ("LLEVAR " + key.replace("llevar_", ""));
@@ -418,7 +432,6 @@
     btnNuevoLlevar.addEventListener("click", crearPedidoParaLlevar);
     el.tablesBar.appendChild(btnNuevoLlevar);
 
-    // Domicilios
     Object.keys(state.orders).filter(k => k.startsWith("domicilio_")).forEach((key) => {
       const info = state.orderInfo[key] || {};
       const label = info.nombre ? info.nombre : ("DOM " + key.replace("domicilio_", ""));
@@ -533,16 +546,20 @@
   }
 
   /* ---------------------------------------------------------
-     ACCIONES DEL CARRITO
+     ACCIONES DEL CARRITO (CON SINCRONIZACIÓN Y LOGS)
   --------------------------------------------------------- */
   async function addProductToOrder(product) {
     const order = currentOrder();
+    console.log("📦 ANTES de agregar:", JSON.stringify(order));
+    
     let item = order.find((it) => it.productId === product.id && (!it.exceptions || it.exceptions.length === 0));
     if (item) {
       item.qty += 1;
     } else {
       order.push({ id: uid(), productId: product.id, name: product.name, price: product.price, qty: 1, exceptions: [] });
     }
+    
+    console.log("📦 DESPUÉS de agregar:", JSON.stringify(order));
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
     renderProducts();
@@ -558,6 +575,7 @@
       removeItem(itemId);
       return;
     }
+    console.log(`🔄 Cambiando cantidad de ${item.name} a ${item.qty}`);
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
     renderProducts();
@@ -568,6 +586,8 @@
     const order = currentOrder();
     const idx = order.findIndex((it) => it.id === itemId);
     if (idx === -1) return;
+    const item = order[idx];
+    console.log(`🗑️ Eliminando ${item.name} del carrito`);
     order.splice(idx, 1);
     await guardarCarritoRemoto(state.currentKey, order);
     renderTables();
@@ -576,7 +596,7 @@
   }
 
   /* ---------------------------------------------------------
-     RENDER: PEDIDO
+     RENDER: PEDIDO (Carrito + SentPedidos)
   --------------------------------------------------------- */
   function renderOrder() {
     const key = state.currentKey;
@@ -830,12 +850,14 @@
       observaciones: (isDelivery || isTakeout) ? (info.observaciones || "") : "",
       total: orderTotal(order),
       estado: "pendiente",
+      clave: key,
     };
 
     el.btnKitchen.disabled = true;
     try {
       const ref = await window.PedidosCocina.enviarPedido(pedido);
-      // No añadimos manualmente, el listener lo hará
+      if (!state.sentPedidos[key]) state.sentPedidos[key] = [];
+      state.sentPedidos[key].push({ id: ref.id, total: pedido.total, productos: productos, estado: "pendiente" });
       state.orders[key] = [];
       await eliminarCarritoRemoto(key);
       saveState();
@@ -911,7 +933,7 @@
   }
 
   /* ---------------------------------------------------------
-     VENTAS
+     VENTAS — CARGA DIRECTA Y RENDER
   --------------------------------------------------------- */
   let ventasSelection = { type: "day", key: getTodayKey() };
   let lastVentasRaw = [];
@@ -1272,12 +1294,15 @@
     const maxIntentos = 20;
     function iniciarListeners() {
       if (window.PedidosCocina && typeof window.PedidosCocina.escucharPendientes === 'function') {
+        console.log("✅ Firebase listo, iniciando listeners de pedidos");
         suscribirPedidos();
+
         if (typeof window.PedidosCocina.escucharEntregados === 'function') {
           window.PedidosCocina.escucharEntregados((pedidos) => {
             renderEntregados(pedidos);
           }, (err) => console.error("Error entregados:", err));
         }
+
         if (typeof window.PedidosCocina.escucharVentasHoy === 'function') {
           window.PedidosCocina.escucharVentasHoy((ventas) => {
             lastVentasRaw = ventas;
@@ -1288,6 +1313,7 @@
       } else {
         intentos++;
         if (intentos < maxIntentos) {
+          console.log(`⏳ Esperando Firebase... (${intentos})`);
           setTimeout(iniciarListeners, 500);
         } else {
           console.error("❌ Firebase no disponible después de varios intentos");
