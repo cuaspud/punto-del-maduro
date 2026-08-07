@@ -160,7 +160,6 @@
           <div class="ventas-empty" id="ventasEmpty">Aún no hay ventas registradas hoy</div>
         </div>
 
-        <!-- Botón de actualización manual -->
         <button id="btnRecargarVentas" style="background: var(--yellow); border: none; border-radius: 12px; padding: 12px; font-weight: 800; margin-top: 16px; cursor: pointer; width: 100%;">
           🔄 Actualizar ventas
         </button>
@@ -233,11 +232,11 @@
   </div>
 </div>
 
-<!-- ===================== MODAL: COBRAR ===================== -->
+<!-- ===================== MODAL: COBRAR (PAGOS DIVIDIDOS) ===================== -->
 <div class="modal-overlay" id="modalPayment">
   <div class="modal modal-payment">
     <div class="modal-header">
-      <h3>Cobrar pedido</h3>
+      <h3>💰 Cobrar pedido</h3>
       <button class="modal-close" data-close="modalPayment">✕</button>
     </div>
     <div class="modal-body">
@@ -245,16 +244,28 @@
         <span>Total a pagar</span>
         <strong id="payTotal">$0</strong>
       </div>
-      <p class="pay-label">Selecciona el método de pago</p>
-      <div class="pay-methods" id="payMethods">
-        <button class="pay-method" data-method="Efectivo"><span class="pay-icon">💵</span><span>Efectivo</span></button>
-        <button class="pay-method" data-method="Nequi"><span class="pay-icon">📱</span><span>Nequi</span></button>
-        <button class="pay-method" data-method="FIOS"><span class="pay-icon">🏦</span><span>FIOS</span></button>
+
+      <div class="pay-total" style="margin-top:8px; background:#FFF3DB;">
+        <span>Pendiente por pagar</span>
+        <strong id="payPendiente">$0</strong>
       </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" data-close="modalPayment">Cancelar</button>
-      <button class="btn-confirm-pay" id="btnConfirmPay" disabled>Confirmar pago</button>
+
+      <div id="pagosRegistrados" style="margin: 12px 0; max-height:120px; overflow-y:auto; font-size:14px;">
+        <!-- se llena con JS -->
+      </div>
+
+      <p class="pay-label">Agregar pago</p>
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+        <input type="number" id="inputMontoPago" placeholder="Monto" step="100" min="0" style="flex:2; padding:12px; border-radius:12px; border:2px solid var(--gray-line); font-size:16px;">
+        <select id="selectMetodoPago" style="flex:1; padding:12px; border-radius:12px; border:2px solid var(--gray-line); font-size:16px; background:white;">
+          <option value="Efectivo">💵 Efectivo</option>
+          <option value="Nequi">📱 Nequi</option>
+          <option value="FIOS">🏦 FIOS</option>
+        </select>
+      </div>
+      <button id="btnAgregarPago" class="btn-primary" style="width:100%;">➕ Agregar pago</button>
+
+      <button id="btnFinalizarPago" class="btn-confirm-pay" style="width:100%; margin-top:12px;" disabled>✅ Pedido pagado</button>
     </div>
   </div>
 </div>
@@ -269,12 +280,9 @@
 <script src="script.js"></script>
 
 <script>
-  // ----------------------------------------------------------------
   // CÓDIGO PARA QUE EL MESERO ESCUCHE A LA COCINA (sin conflictos)
-  // ----------------------------------------------------------------
   (function() {
     "use strict";
-
     let audioCtxMesero = null;
     function playBeepMesero() {
       try {
